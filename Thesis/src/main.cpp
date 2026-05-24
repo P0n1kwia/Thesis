@@ -43,11 +43,11 @@ int main()
     std::cout << "OpenGL " << glGetString(GL_VERSION)
               << "  |  " << glGetString(GL_RENDERER) << "\n";
 
-    // GLM sanity check
+    
     glm::mat4 model = glm::rotate(glm::mat4(1.0f), glm::radians(45.0f), glm::vec3(0, 1, 0));
     (void)model;
 
-    // happly sanity check – empty PLY in memory
+
     happly::PLYData plyData;
     plyData.addElement("vertex", 0);
     (void)plyData;
@@ -58,8 +58,18 @@ int main()
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 430");
 
+    double prevTime  = glfwGetTime();
+    float  fps       = 0.0f;
+    int    clickCount = 0;
+    ImVec4 bgColor   = { 0.12f, 0.12f, 0.12f, 1.0f };
+
     while (!glfwWindowShouldClose(window))
     {
+        double now   = glfwGetTime();
+        float  delta = static_cast<float>(now - prevTime);
+        prevTime     = now;
+        fps          = 1.0f / delta;
+
         glfwPollEvents();
 
         ImGui_ImplOpenGL3_NewFrame();
@@ -67,18 +77,30 @@ int main()
         ImGui::NewFrame();
 
         ImGui::Begin("Status");
+
+        ImGui::Text("FPS: %.1f  (%.2f ms)", fps, delta * 1000.0f);
+        ImGui::Separator();
         ImGui::Text("GLFW   OK");
         ImGui::Text("GLAD   OK  (OpenGL %s)", glGetString(GL_VERSION));
         ImGui::Text("ImGui  OK  (v%s)", IMGUI_VERSION);
         ImGui::Text("GLM    OK");
         ImGui::Text("happly OK");
+        ImGui::Separator();
+
+        if (ImGui::Button("Kliknij mnie"))
+            ++clickCount;
+        ImGui::SameLine();
+        ImGui::Text("Kliknięcia: %d", clickCount);
+
+        ImGui::ColorEdit3("Tło", reinterpret_cast<float*>(&bgColor));
+
         ImGui::End();
 
         ImGui::Render();
         int w, h;
         glfwGetFramebufferSize(window, &w, &h);
         glViewport(0, 0, w, h);
-        glClearColor(0.12f, 0.12f, 0.12f, 1.0f);
+        glClearColor(bgColor.x, bgColor.y, bgColor.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
