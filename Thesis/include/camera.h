@@ -25,8 +25,8 @@ public:
     float     getFovY()       const;
     float     getAspect()     const;
 
-    void orbit(float deltYaw, float deltaPitch);
-    void zoom(float delta);
+    void orbit(float deltYaw, float deltaPitch, float multi);
+    void zoom(float delta, float sensitivity);
     void pan(float dx, float dy);
     void onViewportResize(int w, int h);
 

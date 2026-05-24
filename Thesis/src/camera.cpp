@@ -13,6 +13,55 @@ Camera::Camera(int viewportW, int viewportH, const CameraConfig& config)
 	recompute();
 }
 
+const glm::mat4& Camera::getViewMatrix() const
+{
+	return viewMatrix;
+}
+
+const glm::mat4& Camera::getProjMatrix() const
+{
+	return projMatrix;
+}
+
+float Camera::getFovY() const
+{
+	return fovY;
+}
+
+float Camera::getAspect() const
+{
+	return aspect;
+}
+
+void Camera::orbit(float deltYaw, float deltaPitch, float multi)
+{
+	yaw += deltYaw * multi;
+	pitch += deltaPitch * multi;
+	dirty = true;
+}
+
+void Camera::zoom(float delta, float sensitivity = 0.5f)
+{
+	radius -= delta * radius * sensitivity;
+	if (radius < 0.1f) radius = 0.1f;
+	dirty = true;
+
+}
+
+void Camera::pan(float dx, float dy)
+{
+	glm::vec3 forward = getForward();
+	glm::vec3 right = glm::normalize(glm::cross(glm::vec3(0.f, 1.f, 0.f), forward));
+	glm::vec3 up = glm::normalize(glm::cross(forward, right));
+	glm::vec3 offset = (right * dx) + (up * dy);
+	eye += offset;
+	target += offset;
+
+
+	dirty = true;
+
+}
+
 void Camera::recompute()
 {
 	pitch = glm::clamp(pitch, glm::radians(-89.0f), glm::radians(89.0f));
