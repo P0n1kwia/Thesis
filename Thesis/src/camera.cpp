@@ -54,7 +54,7 @@ void Camera::orbit(float deltYaw, float deltaPitch, float multi)
 	dirty = true;
 }
 
-void Camera::zoom(float delta, float sensitivity = 0.5f)
+void Camera::zoom(float delta, float sensitivity)
 {
 	radius -= delta * radius * sensitivity;
 	if (radius < 0.1f) radius = 0.1f;

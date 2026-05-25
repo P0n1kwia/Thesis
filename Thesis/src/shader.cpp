@@ -24,7 +24,7 @@ Shader::Shader(const std::string& vertexPath, const std::string& fragmentPath)
 		fragmentCode = fragmentSS.str();
 
 	}
-	catch (std::ifstream::failure e) 
+	catch (const std::ifstream::failure& e)
 	{
 		std::cerr << "Failed  to open shader File! " << e.what() << "\n";
 	}
@@ -105,7 +105,7 @@ void Shader::setMat4(const std::string& name, const glm::mat4& mat)
 	glUniformMatrix4fv(getUniformLocation(name), 1, GL_FALSE, &mat[0][0]);
 }
 
-void Shader::setVec3(const std::string name, const glm::vec3& vec)
+void Shader::setVec3(const std::string& name, const glm::vec3& vec)
 {
 	glUniform3fv(getUniformLocation(name), 1, &vec[0]);
 }
@@ -120,13 +120,13 @@ Shader::~Shader()
 	glDeleteProgram(ID);
 }
 
-unsigned int Shader::getUniformLocation(const std::string& name)
+int Shader::getUniformLocation(const std::string& name)
 {
 	if (uniformLocation.find(name) != uniformLocation.end())
 	{
 		return uniformLocation[name];
 	}
-	unsigned int loc = glGetUniformLocation(ID, name.c_str());
+	int loc = glGetUniformLocation(ID, name.c_str());
 	if (loc == -1)
 	{
 		std::cerr << "Failed to find uniform location: " << name << "!\n";

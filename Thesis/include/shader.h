@@ -8,11 +8,9 @@ class Shader
 public:
 	Shader(const std::string& vertexPath, const std::string& fragmentPath);
 	void use();
-	void checkCompilationErrors(unsigned int shader, const std::string& type);
-	
 	void setFloat(const std::string& name, float value);
 	void setMat4(const std::string& name, const glm::mat4& mat);
-	void setVec3(const std::string name, const glm::vec3& vec);
+	void setVec3(const std::string& name, const glm::vec3& vec);
 	void setMat3(const std::string& name, const glm::mat3& mat);
 
 	~Shader();
@@ -20,9 +18,11 @@ public:
 	Shader& operator=(const Shader&) = delete;
 
 private:
-	unsigned int ID;
-	std::map<std::string, unsigned int> uniformLocation;
+	void checkCompilationErrors(unsigned int shader, const std::string& type);
 
-	unsigned int getUniformLocation(const std::string& name);
+	unsigned int ID;
+	std::map<std::string, int> uniformLocation;
+
+	int getUniformLocation(const std::string& name);
 	
 };
