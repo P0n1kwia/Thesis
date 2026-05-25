@@ -17,7 +17,7 @@ class Camera {
 public:
     Camera(int viewportW, int viewportH, const CameraConfig& config = {});
 
-    const glm::mat4& getViewMatrix()  const;
+    const glm::mat4& getViewMatrix()  ;
     const glm::mat4& getProjMatrix()  const;
 
     glm::vec3 getPosition()   const;
@@ -52,7 +52,7 @@ private:
     glm::vec3 eye;
     glm::mat4 viewMatrix;
     glm::mat4 projMatrix;
-    glm::mat4 lastSortView;
+    glm::vec3 lastSortPos;
 
 
     bool dirty = true;

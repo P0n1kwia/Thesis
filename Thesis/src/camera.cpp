@@ -13,14 +13,28 @@ Camera::Camera(int viewportW, int viewportH, const CameraConfig& config)
 	recompute();
 }
 
-const glm::mat4& Camera::getViewMatrix() const
+const glm::mat4& Camera::getViewMatrix() 
 {
+	if (dirty)
+	{
+		recompute();
+	}
 	return viewMatrix;
 }
 
 const glm::mat4& Camera::getProjMatrix() const
 {
 	return projMatrix;
+}
+
+glm::vec3 Camera::getPosition() const
+{
+	return eye;
+}
+
+glm::vec3 Camera::getForward() const
+{
+	return glm::normalize(target - eye);
 }
 
 float Camera::getFovY() const
@@ -60,6 +74,23 @@ void Camera::pan(float dx, float dy)
 
 	dirty = true;
 
+}
+
+void Camera::onViewportResize(int w, int h)
+{
+	aspect = static_cast<float>(w) / h;
+	dirty = true;
+}
+
+bool Camera::needsSort() const
+{
+	float dist = glm::distance(lastSortPos, getPosition());
+	return dist > 1e-2f;
+}
+
+void Camera::onSortComplete()
+{
+	lastSortPos = getPosition();
 }
 
 void Camera::recompute()
