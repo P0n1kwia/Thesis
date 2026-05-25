@@ -65,7 +65,15 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 
-FetchContent_MakeAvailable(glfw glad glm imgui happly)
+# ── stb (header-only image loading) ───────────────────────────────────────────
+FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG        master
+    GIT_SHALLOW    TRUE
+)
+
+FetchContent_MakeAvailable(glfw glad glm imgui happly stb)
 
 # Generate an OpenGL 4.3 Core profile loader via glad2
 glad_add_library(glad_gl_43_core REPRODUCIBLE API gl:core=4.3)
@@ -88,5 +96,9 @@ target_link_libraries(imgui_lib PUBLIC glfw)
 # happly – header-only interface target
 add_library(happly_lib INTERFACE)
 target_include_directories(happly_lib INTERFACE ${happly_SOURCE_DIR})
+
+# stb – header-only interface target
+add_library(stb_lib INTERFACE)
+target_include_directories(stb_lib INTERFACE ${stb_SOURCE_DIR})
 
 add_subdirectory(Thesis)
