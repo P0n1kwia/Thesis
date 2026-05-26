@@ -11,6 +11,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <shader.h>
 #include <camera.h>
+#include <load_splat.h>
 
 struct AppState {
     Camera* camera = nullptr;
@@ -158,6 +159,20 @@ int main()
 
     double prevTime = glfwGetTime();
     float  fps      = 0.f;
+
+
+    //----------------------------Load splat test-------------------------
+    auto splat = loadRawSplats("resources/point_cloud.ply");
+    for (int i = 0; i < 3; i++)
+    {
+        auto s = splat[i];
+        std::cout << s.position[0] << " " << s.position[1] << " " << s.position[2] << "\n";
+        std::cout << s.sh[0] << " " << s.sh[1] << " " << s.sh[2] << "\n";
+        std::cout << s.opacity << "\n";
+        std::cout << s.scale[0] << " " << s.scale[1] << " " << s.scale[2] << "\n";
+        std::cout << s.quaternion[0] << " " << s.quaternion[1] << " " << s.quaternion[2] <<" "<<s.quaternion[3] << "\n";
+    }
+    std::cout << splat.size();
 
     while (!glfwWindowShouldClose(window))
     {
