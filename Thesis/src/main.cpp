@@ -162,7 +162,7 @@ int main()
 
 
     //----------------------------Load splat test-------------------------
-    auto splat = loadRawSplats("resources/point_cloud.ply");
+    auto splat = loadSplats("resources/point_cloud.ply");
     for (int i = 0; i < 3; i++)
     {
         auto s = splat[i];

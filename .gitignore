@@ -73,7 +73,7 @@ Testing/
 
 # ── Media / large binary assets (tracked via Git LFS if needed) ───────────────
 # Uncommenting these lines keeps the repo light; use Git LFS for the files.
- Thesis/resources/*.ply
+Thesis/resources/*.ply
 # Thesis/resources/*.obj
 # Thesis/resources/*.png
 # Thesis/resources/*.jpg

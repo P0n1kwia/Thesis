@@ -1,7 +1,7 @@
 #include <vector>
 #include <happly.h>
 
-struct RawSplat
+struct Splat
 {
     float position[3];
     float sh[3];
@@ -9,4 +9,5 @@ struct RawSplat
     float scale[3];
     float quaternion[4];
 };
-std::vector<RawSplat> loadRawSplats(const std::string& path);
+
+std::vector<Splat> loadSplats(const std::string& path);

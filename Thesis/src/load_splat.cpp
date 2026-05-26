@@ -1,6 +1,7 @@
 #include <load_splat.h>
-
-std::vector<RawSplat> loadRawSplats(const std::string& path)
+#include <algorithm>
+#include <cmath>
+std::vector<Splat> loadSplats(const std::string& path)
 {
     happly::PLYData plyData(path);
 
@@ -23,27 +24,30 @@ std::vector<RawSplat> loadRawSplats(const std::string& path)
     auto q2 = plyData.getElement("vertex").getProperty<float>("rot_2");
     auto q3 = plyData.getElement("vertex").getProperty<float>("rot_3");
 
-    std::vector<RawSplat> splats(x.size());
+    std::vector<Splat> splats(x.size());
+    float SH_C0 = 0.28209479177f;
     for (size_t i = 0; i < x.size(); i++)
     {
         splats[i].position[0] = x[i];
         splats[i].position[1] = y[i];
         splats[i].position[2] = z[i];
 
-        splats[i].sh[0] = sh0[i];
-        splats[i].sh[1] = sh1[i];
-        splats[i].sh[2] = sh2[i];
+        splats[i].sh[0] = std::clamp(0.5f + SH_C0 * sh0[i], 0.0f, 1.0f);
+        splats[i].sh[1] = std::clamp(0.5f + SH_C0 * sh1[i], 0.0f, 1.0f);
+        splats[i].sh[2] = std::clamp(0.5f + SH_C0 * sh2[i], 0.0f, 1.0f);
+        
+        splats[i].opacity = (1.0f) / (1.0f + std::exp((-opa[i])));
 
-        splats[i].opacity = opa[i];
+        splats[i].scale[0] = std::exp(sc0[i]);
+        splats[i].scale[1] = std::exp(sc1[i]);
+        splats[i].scale[2] = std::exp(sc2[i]);
 
-        splats[i].scale[0] = sc0[i];
-        splats[i].scale[1] = sc1[i];
-        splats[i].scale[2] = sc2[i];
+        float len = std::sqrt(q0[i] * q0[i] + q1[i] * q1[i] + q2[i] * q2[i] + q3[i] * q3[i]);
 
-        splats[i].quaternion[0] = q0[i];
-        splats[i].quaternion[1] = q1[i];
-        splats[i].quaternion[2] = q2[i];
-        splats[i].quaternion[3] = q3[i];
+        splats[i].quaternion[0] = q0[i]/len;
+        splats[i].quaternion[1] = q1[i]/len;
+        splats[i].quaternion[2] = q2[i]/len;
+        splats[i].quaternion[3] = q3[i]/len;
     }
     return splats;
 }
