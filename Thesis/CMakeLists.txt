@@ -1,7 +1,7 @@
 file(GLOB_RECURSE THESIS_SOURCES CONFIGURE_DEPENDS src/*.cpp)
 file(GLOB_RECURSE THESIS_HEADERS CONFIGURE_DEPENDS include/*.h include/*.hpp)
 
-add_executable(Thesis ${THESIS_SOURCES} ${THESIS_HEADERS} "include/shader.h" "src/shader.cpp" "include/camera.h" "src/camera.cpp")
+add_executable(Thesis ${THESIS_SOURCES} ${THESIS_HEADERS} "include/shader.h" "src/shader.cpp" "include/camera.h" "src/camera.cpp" "include/splat_renderer.h" "src/splat_renderer.cpp" "include/splat.h")
 
 target_include_directories(Thesis PRIVATE include)
 
