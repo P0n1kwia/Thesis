@@ -1,7 +1,7 @@
 file(GLOB_RECURSE THESIS_SOURCES CONFIGURE_DEPENDS src/*.cpp)
 file(GLOB_RECURSE THESIS_HEADERS CONFIGURE_DEPENDS include/*.h include/*.hpp)
 
-add_executable(Thesis ${THESIS_SOURCES} ${THESIS_HEADERS})
+add_executable(Thesis ${THESIS_SOURCES} ${THESIS_HEADERS} "include/shader.h" "src/shader.cpp" "include/camera.h" "src/camera.cpp")
 
 target_include_directories(Thesis PRIVATE include)
 
@@ -11,6 +11,7 @@ target_link_libraries(Thesis PRIVATE
     glm::glm
     imgui_lib
     happly_lib
+    stb_lib
 )
 
 set_target_properties(Thesis PROPERTIES
@@ -18,7 +19,7 @@ set_target_properties(Thesis PROPERTIES
     CXX_STANDARD_REQUIRED ON
 )
 
-# Copy runtime assets to the build output directory after each build
+
 add_custom_command(TARGET Thesis POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders
