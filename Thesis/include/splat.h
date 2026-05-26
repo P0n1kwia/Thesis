@@ -1,3 +1,4 @@
+#pragma once
 struct Splat //56
 {
     float position[3]; //->12

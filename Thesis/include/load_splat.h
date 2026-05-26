@@ -1,3 +1,4 @@
+#pragma once
 #include <vector>
 #include <happly.h>
 #include <splat.h>
