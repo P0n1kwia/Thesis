@@ -13,5 +13,7 @@ public:
 private:
 	unsigned int VAO;
 	unsigned int VBO;
+	unsigned int EBO;
+	unsigned int quadVBO;
 	size_t splat_count = 0;
 };

@@ -103,11 +103,9 @@ int main()
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_DEPTH_TEST);
-    glEnable(GL_PROGRAM_POINT_SIZE);
 
     double prevTime = glfwGetTime();
     float  fps      = 0.f;
-
 
     auto splats = loadSplats("resources/point_cloud.ply");
     std::cout << "Loaded " << splats.size() << " splats\n";
