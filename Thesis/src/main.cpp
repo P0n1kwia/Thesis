@@ -114,6 +114,8 @@ int main()
 
     SplatRenderer renderer;
     renderer.upload(splats);
+    splatShader.use();
+    splatShader.setVec2("uScreenSize", glm::vec2(1280, 720));
 
     while (!glfwWindowShouldClose(window))
     {

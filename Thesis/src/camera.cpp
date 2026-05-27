@@ -12,7 +12,6 @@ Camera::Camera(int viewportW, int viewportH, const CameraConfig& config)
 	pitch = config.pitch;
 	recompute();
 }
-
 const glm::mat4& Camera::getViewMatrix() 
 {
 	if (dirty)
