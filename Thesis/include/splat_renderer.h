@@ -8,6 +8,7 @@ class SplatRenderer
 public:
 	void upload(const std::vector<Splat>& splats);
 	void draw(Shader& shader,  Camera& camera);
+	void sort(Camera& camera);
 
 	~SplatRenderer();
 private:
@@ -15,5 +16,5 @@ private:
 	unsigned int VBO;
 	unsigned int EBO;
 	unsigned int quadVBO;
-	size_t splat_count = 0;
+	std::vector<Splat> splatsVector;
 };

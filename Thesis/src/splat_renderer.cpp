@@ -1,8 +1,9 @@
 #include <splat_renderer.h>
 #include <glad/gl.h>
+#include <algorithm>
 void SplatRenderer::upload(const std::vector<Splat>& splats)
 {
-
+	splatsVector = splats;
 	const float quad[] = {
 		 1.0f,  1.0f, 0.0f,   
 		 1.0f, -1.0f, 0.0f,
@@ -15,7 +16,6 @@ void SplatRenderer::upload(const std::vector<Splat>& splats)
 	};
 
 
-	splat_count = splats.size();
 	glGenVertexArrays(1, &VAO);
 	glGenBuffers(1, &VBO);
 
@@ -33,7 +33,7 @@ void SplatRenderer::upload(const std::vector<Splat>& splats)
 
 
 	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(Splat) * splat_count, splats.data(), GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(Splat) * splatsVector.size(), splats.data(), GL_STATIC_DRAW);
 	
 	
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 56, (void*)0);
@@ -65,7 +65,33 @@ void SplatRenderer::draw(Shader& shader, Camera& camera)
 	shader.setMat4("uView", camera.getViewMatrix());
 	shader.setMat4("uProj", camera.getProjMatrix());
 	glBindVertexArray(VAO);
-	glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0, splat_count);
+	glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0, splatsVector.size());
+}
+
+void SplatRenderer::sort(Camera& camera)
+{
+	uint32_t n = splatsVector.size();
+	std::vector<float> depths(n);
+	std::vector<uint32_t> indices(n);
+	glm::mat4 view = camera.getViewMatrix();
+	for (uint32_t i = 0; i < n; i++)
+	{
+		glm::vec3 viewPos = glm::vec3(view * glm::vec4(splatsVector[i].position[0], -splatsVector[i].position[1], splatsVector[i].position[2], 1.0f));
+		depths[i] = -viewPos.z;
+		indices[i] = i;
+	}
+	std::sort(indices.begin(), indices.end(), [&depths](int a, int b) {
+		return depths[a] > depths[b];
+		});
+	std::vector<Splat> sortedSplats(n);
+	for (uint32_t i = 0; i < n; i++)
+	{
+		int original = indices[i];
+		sortedSplats[i] = splatsVector[original];
+	}
+	splatsVector = sortedSplats;
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, sortedSplats.size() * sizeof(Splat), sortedSplats.data());
 }
 
 SplatRenderer::~SplatRenderer()
