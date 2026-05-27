@@ -15,6 +15,6 @@ void main()
 {
 	vSh = aSh;
 	vOpacity = aOpacity;
-
+	gl_PointSize = 5.0;
 	gl_Position = uProj * uView * vec4(aPos.x,-aPos.y,aPos.z,1.0);
 }

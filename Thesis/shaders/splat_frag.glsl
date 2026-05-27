@@ -6,5 +6,11 @@ out vec4 fragColor;
 
 void main()
 {
-	fragColor = vec4(vSh,1.0);
+	
+	vec2 coord = gl_PointCoord - vec2(0.5,0.5);
+	if(dot(coord,coord) > 0.25)
+	{
+	discard;
+	}
+	fragColor = vec4(vSh,vOpacity);
 }
