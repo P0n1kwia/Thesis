@@ -101,8 +101,8 @@ int main()
     ImGui_ImplOpenGL3_Init("#version 430");
 
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glEnable(GL_DEPTH_TEST);
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+
 
     double prevTime = glfwGetTime();
     float  fps      = 0.f;
@@ -115,7 +115,7 @@ int main()
     SplatRenderer renderer;
     renderer.upload(splats);
     splatShader.use();
-    splatShader.setVec2("uScreenSize", glm::vec2(1280, 720));
+    splatShader.setVec2("uScreenSize", glm::vec2(1280, 720)); // no hard coded values!!
 
     while (!glfwWindowShouldClose(window))
     {

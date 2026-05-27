@@ -12,6 +12,10 @@ uniform vec2 uScreenSize;
 
 out vec3 vSh;
 out float vOpacity;
+out flat vec2 vCenterPos;
+out flat mat2 vICov2D; //symetric so we need a,b,c [a,b, c]
+
+
 
 void main()
 {
@@ -37,24 +41,34 @@ void main()
 	mat3 Mt = transpose(M);
 	mat3 Cov = M*Mt;
 	vec4 t = uView * vec4(aPos.x,-aPos.y,aPos.z, 1.0);
+	float fx = uProj[0].x * uScreenSize.x * 0.5; 
+	float fy = uProj[1].y * uScreenSize.y * 0.5;
 	mat3 J = mat3(
-	vec3(uProj[0].x /t.z, 0, -uProj[0].x * t.x / (t.z*t.z)),
-	vec3(0.0,uProj[1].y/t.z, -uProj[1].y * t.z /(t.z*t.z)),
-	vec3(0.0,0.0,0.0)
-	);
+    vec3(fx / t.z, 0, -fx * t.x / (t.z*t.z)),
+    vec3(0.0, fy / t.z, -fy * t.y / (t.z*t.z)),
+    vec3(0.0, 0.0, 0.0)
+);
 	mat3 W = mat3(uView);
 	mat3 Cov2D = J * W * Cov * transpose(W) * transpose(J);
 	mat2 D2 = mat2(
 	vec2(Cov2D[0].xy),
 	vec2(Cov2D[1].xy)
 	);
-	float mid = 0.5 * (D2[0][0] + D2[1][1]);
-	float disc = sqrt(max(0.1,mid*mid - (D2[0][0] * D2[1][1] - D2[0][1]*D2[0][1])));
-	float lambda1 = mid + disc;
-	float lambda2 = mid - disc;
-	float radius = ceil(3.0 * sqrt(max(lambda1,lambda2)));
+	D2[0][0] += 0.3;
+	D2[1][1] += 0.3;
+
+	vec2 extent = vec2(
+		ceil(3.0 * sqrt(max(0.000001, D2[0][0]))),
+		ceil(3.0 * sqrt(max(0.000001, D2[1][1])))
+	);
 	
-	vec4 clipPos = uProj * t ;
-	clipPos.xy += aQuadPos.xy * radius / uScreenSize * clipPos.w;
+	vec4 clipPos = uProj * t;
+	vCenterPos = vec2((clipPos.xyz/clipPos.w) * 0.5 + 0.5) * uScreenSize;
+
+	clipPos.xy += aQuadPos.xy * extent * vec2(2.0) / uScreenSize * clipPos.w;
+
+
+	vICov2D = inverse(D2);
+
 	gl_Position = clipPos;
 }
