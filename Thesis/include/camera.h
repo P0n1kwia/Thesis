@@ -17,7 +17,7 @@ class Camera {
 public:
     Camera(int viewportW, int viewportH, const CameraConfig& config = {});
 
-    const glm::mat4& getViewMatrix()  ;
+    const glm::mat4& getViewMatrix()       ;
     const glm::mat4& getProjMatrix()  const;
 
     glm::vec3 getPosition()   const;

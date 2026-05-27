@@ -1,6 +1,3 @@
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
-
 #include <iostream>
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
@@ -11,6 +8,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <shader.h>
 #include <camera.h>
+#include <load_splat.h>
+#include <splat_renderer.h>
 
 struct AppState {
     Camera* camera = nullptr;
@@ -101,63 +100,22 @@ int main()
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 430");
 
-    // Textured quad: position(3) + UV(2)
-    constexpr float verts[] = {
-        -1.f, -1.f, 0.f,  0.f, 0.f,
-         1.f, -1.f, 0.f,  1.f, 0.f,
-         1.f,  1.f, 0.f,  1.f, 1.f,
-        -1.f,  1.f, 0.f,  0.f, 1.f,
-    };
-    constexpr unsigned int idx[] = { 0, 1, 2, 0, 2, 3 };
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
-    unsigned int VAO, VBO, EBO;
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-    glGenBuffers(1, &EBO);
-    glBindVertexArray(VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(idx), idx, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    glBindVertexArray(0);
-
-    // Texture
-    unsigned int tex;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    {
-        stbi_set_flip_vertically_on_load(true);
-        int tw, th, ch;
-        unsigned char* data = stbi_load("resources/wall_test.jpg", &tw, &th, &ch, 0);
-        if (data)
-        {
-            GLenum fmt = (ch == 4) ? GL_RGBA : GL_RGB;
-            glTexImage2D(GL_TEXTURE_2D, 0, fmt, tw, th, 0, fmt, GL_UNSIGNED_BYTE, data);
-            glGenerateMipmap(GL_TEXTURE_2D);
-            stbi_image_free(data);
-        }
-        else
-        {
-            std::cerr << "Failed to load texture: " << stbi_failure_reason() << "\n";
-        }
-    }
-
-    Shader shader("shaders/vert_test.glsl", "shaders/frag_test.glsl");
-    shader.use();
-    shader.setInt("uTex", 0);
-
-    glEnable(GL_DEPTH_TEST);
 
     double prevTime = glfwGetTime();
     float  fps      = 0.f;
+
+    auto splats = loadSplats("resources/point_cloud.ply");
+    std::cout << "Loaded " << splats.size() << " splats\n";
+
+    Shader splatShader("shaders/splat_vert.glsl", "shaders/splat_frag.glsl");
+
+    SplatRenderer renderer;
+    renderer.upload(splats);
+    splatShader.use();
+    splatShader.setVec2("uScreenSize", glm::vec2(1280, 720)); // no hard coded values!!
 
     while (!glfwWindowShouldClose(window))
     {
@@ -180,31 +138,22 @@ int main()
 
         ImGui::Render();
 
-        int w, h;
+        int w, h; 
         glfwGetFramebufferSize(window, &w, &h);
         glViewport(0, 0, w, h);
         glClearColor(0.12f, 0.12f, 0.12f, 1.f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        shader.use();
-        shader.setMat4("uModel", glm::mat4(1.f));
-        shader.setMat4("uView",  camera.getViewMatrix());
-        shader.setMat4("uProj",  camera.getProjMatrix());
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, tex);
-
-        glBindVertexArray(VAO);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        splatShader.use();
+        if (camera.needsSort()) {
+            renderer.sort(camera);
+            camera.onSortComplete();
+        }
+        renderer.draw(splatShader, camera);
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);
     }
-
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteBuffers(1, &VBO);
-    glDeleteBuffers(1, &EBO);
-    glDeleteTextures(1, &tex);
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
