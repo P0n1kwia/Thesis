@@ -9,6 +9,7 @@ layout (location = 5) in vec3 aQuadPos;
 uniform mat4 uView;
 uniform mat4 uProj;
 uniform vec2 uScreenSize;
+uniform mat4 uModel;
 
 out vec3 vSh;
 out float vOpacity;
@@ -40,15 +41,23 @@ void main()
 	mat3 M = R * S;
 	mat3 Mt = transpose(M);
 	mat3 Cov = M*Mt;
-	vec4 t = uView * vec4(aPos.x,-aPos.y,aPos.z, 1.0);
+	mat4 MV = uView * uModel;
+	vec4 t = MV * vec4(aPos,1.0);
 	float fx = uProj[0].x * uScreenSize.x * 0.5; 
 	float fy = uProj[1].y * uScreenSize.y * 0.5;
+
+	float tz = -t.z;
+	if (tz < 0.2) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
+	float limx = 1.3 * (uScreenSize.x * 0.5) / fx;
+	float limy = 1.3 * (uScreenSize.y * 0.5) / fy;
+	float tx = clamp(t.x / tz, -limx, limx) * tz;
+	float ty = clamp(t.y / tz, -limy, limy) * tz;
 	mat3 J = mat3(
-    vec3(fx / t.z, 0, -fx * t.x / (t.z*t.z)),
-    vec3(0.0, fy / t.z, -fy * t.y / (t.z*t.z)),
-    vec3(0.0, 0.0, 0.0)
-);
-	mat3 W = mat3(uView);
+		vec3(fx / tz, 0.0,     fx * tx / (tz*tz)),
+		vec3(0.0,     fy / tz, fy * ty / (tz*tz)),
+		vec3(0.0,     0.0,     0.0)
+	);
+	mat3 W = mat3(MV);
 	mat3 Cov2D = J * W * Cov * transpose(W) * transpose(J);
 	mat2 D2 = mat2(
 	vec2(Cov2D[0].xy),

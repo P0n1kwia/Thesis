@@ -31,7 +31,6 @@ void SplatRenderer::upload(const std::vector<Splat>& splats)
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
 
-
 	glBindBuffer(GL_ARRAY_BUFFER, VBO);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(Splat) * splatsVector.size(), splats.data(), GL_STATIC_DRAW);
 	
@@ -64,6 +63,7 @@ void SplatRenderer::draw(Shader& shader, Camera& camera)
 	
 	shader.setMat4("uView", camera.getViewMatrix());
 	shader.setMat4("uProj", camera.getProjMatrix());
+	shader.setMat4("uModel", model);
 	glBindVertexArray(VAO);
 	glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0, splatsVector.size());
 }
@@ -74,9 +74,11 @@ void SplatRenderer::sort(Camera& camera)
 	std::vector<float> depths(n);
 	std::vector<uint32_t> indices(n);
 	glm::mat4 view = camera.getViewMatrix();
+	glm::mat4 MV = view * model;
+	
 	for (uint32_t i = 0; i < n; i++)
 	{
-		glm::vec3 viewPos = glm::vec3(view * glm::vec4(splatsVector[i].position[0], -splatsVector[i].position[1], splatsVector[i].position[2], 1.0f));
+		glm::vec3 viewPos = glm::vec3(MV * glm::vec4(splatsVector[i].position[0], splatsVector[i].position[1], splatsVector[i].position[2], 1.0f));
 		depths[i] = -viewPos.z;
 		indices[i] = i;
 	}

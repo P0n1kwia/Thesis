@@ -1,11 +1,11 @@
-# ── Build output ──────────────────────────────────────────────────────────────
+# - Build output -------------------------------
 out/
 build/
 Build/
 build-*/
 cmake-build-*/
 
-# ── CMake generated ───────────────────────────────────────────────────────────
+# - CMake generated -----------------------------─
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
@@ -15,11 +15,11 @@ Makefile
 *.cmake
 !CMakePresets.json
 
-# ── FetchContent / vcpkg cache ────────────────────────────────────────────────
+# - FetchContent / vcpkg cache ------------------------
 _deps/
 vcpkg_installed/
 
-# ── Visual Studio ─────────────────────────────────────────────────────────────
+# - Visual Studio ------------------------------─
 .vs/
 *.sln
 *.vcxproj
@@ -28,7 +28,7 @@ vcpkg_installed/
 *.slnx
 *.user
 
-# ── Compiled objects & libraries ──────────────────────────────────────────────
+# - Compiled objects & libraries -----------------------
 *.o
 *.obj
 *.slo
@@ -42,22 +42,22 @@ vcpkg_installed/
 *.dylib
 *.dll
 
-# ── Executables ───────────────────────────────────────────────────────────────
+# - Executables -------------------------------─
 *.exe
 *.out
 *.app
 
-# ── Debug / linker info ───────────────────────────────────────────────────────
+# - Debug / linker info ---------------------------─
 *.pdb
 *.ilk
 *.dwo
 *.pch
 *.gch
 
-# ── Precompiled headers ───────────────────────────────────────────────────────
+# - Precompiled headers ---------------------------─
 *.d
 
-# ── Editor & OS ───────────────────────────────────────────────────────────────
+# - Editor & OS -------------------------------─
 *.tmp
 *.bak
 *.swp
@@ -68,12 +68,13 @@ Thumbs.db
 desktop.ini
 .cache/
 
-# ── Test output ───────────────────────────────────────────────────────────────
+# - Test output -------------------------------─
 Testing/
 
-# ── Media / large binary assets (tracked via Git LFS if needed) ───────────────
+# - Media / large binary assets (tracked via Git LFS if needed) -------─
 # Uncommenting these lines keeps the repo light; use Git LFS for the files.
 Thesis/resources/*.ply
 # Thesis/resources/*.obj
 # Thesis/resources/*.png
 # Thesis/resources/*.jpg
+docs/

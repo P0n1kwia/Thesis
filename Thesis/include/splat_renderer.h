@@ -17,4 +17,5 @@ private:
 	unsigned int EBO;
 	unsigned int quadVBO;
 	std::vector<Splat> splatsVector;
+	glm::mat4 model{glm::mat4(1,0,0,0, 0,-1,0,0, 0,0,-1,0, 0,0,0,1) };
 };

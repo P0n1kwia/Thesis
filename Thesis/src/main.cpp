@@ -11,6 +11,19 @@
 #include <load_splat.h>
 #include <splat_renderer.h>
 
+
+#ifdef _WIN32
+#include <windows.h>
+
+extern "C" {
+    // Forces use of the dedicated NVIDIA GPU
+    __declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001;
+
+    // Forces use of the dedicated AMD GPU (good practice to include both)
+    __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
+#endif
+
 struct AppState {
     Camera* camera = nullptr;
     bool leftDown  = false;
