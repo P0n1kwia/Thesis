@@ -23,12 +23,14 @@ extern "C" {
     __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 }
 #endif
-
+const unsigned int WINDOW_HEIGHT = 720;
+const unsigned int WINDOW_WIDTH = 1280;
 struct AppState {
     Camera* camera = nullptr;
     bool leftDown  = false;
     bool rightDown = false;
     double lastX = 0.0, lastY = 0.0;
+    int fbHeight = WINDOW_HEIGHT;
 };
 
 static void errorCB(int err, const char* desc)
@@ -47,14 +49,16 @@ static void mouseButtonCB(GLFWwindow* w, int btn, int action, int)
 
 static void cursorCB(GLFWwindow* w, double x, double y)
 {
-    if (ImGui::GetIO().WantCaptureMouse) return;
     auto* s = static_cast<AppState*>(glfwGetWindowUserPointer(w));
-    float dx = static_cast<float>(x - s->lastX);
-    float dy = static_cast<float>(y - s->lastY);
+    float dx = float(x - s->lastX), dy = float(y - s->lastY);
     s->lastX = x;
     s->lastY = y;
+    if (ImGui::GetIO().WantCaptureMouse) return;
     if (s->leftDown)  s->camera->orbit(glm::radians(dx * 0.3f), glm::radians(-dy * 0.3f), 1.f);
-    if (s->rightDown) s->camera->pan(-dx * 0.005f, dy * 0.005f);
+    if (s->rightDown) {
+        float scale = 2.0f * s->camera->getRadius() * tanf(s->camera->getFovY() * 0.5f) / s->fbHeight;
+        s->camera->pan(-dx * scale, dy * scale);
+    }
 }
 
 static void scrollCB(GLFWwindow* w, double, double yoff)
@@ -68,10 +72,12 @@ static void fbSizeCB(GLFWwindow* w, int width, int height)
     glViewport(0, 0, width, height);
     auto* s = static_cast<AppState*>(glfwGetWindowUserPointer(w));
     if (s->camera) s->camera->onViewportResize(width, height);
+    s->fbHeight = height;
 }
 
 int main()
 {
+    
     glfwSetErrorCallback(errorCB);
     if (!glfwInit()) return 1;
 
@@ -97,10 +103,15 @@ int main()
     CameraConfig cfg;
     cfg.yaw    = glm::radians(90.f);
     cfg.radius = 3.f;
-    Camera camera(1280, 720, cfg);
+    Camera camera(WINDOW_WIDTH, WINDOW_HEIGHT, cfg);
 
     // Input — set callbacks before ImGui so ImGui chains to ours
     AppState state{ &camera };
+    {
+        int fbW, fbH;
+        glfwGetFramebufferSize(window, &fbW, &fbH);
+        state.fbHeight = fbH;
+    }
     glfwSetWindowUserPointer(window, &state);
     glfwSetMouseButtonCallback(window, mouseButtonCB);
     glfwSetCursorPosCallback(window, cursorCB);
@@ -123,6 +134,7 @@ int main()
     auto splats = loadSplats("resources/point_cloud.ply");
     std::cout << "Loaded " << splats.size() << " splats\n";
 
+    {
     Shader splatShader("shaders/splat_vert.glsl", "shaders/splat_frag.glsl");
 
     SplatRenderer renderer;
@@ -154,6 +166,8 @@ int main()
         int w, h; 
         glfwGetFramebufferSize(window, &w, &h);
         glViewport(0, 0, w, h);
+        splatShader.use();
+        splatShader.setVec2("uScreenSize", glm::vec2(w, h));
         glClearColor(0.12f, 0.12f, 0.12f, 1.f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -167,7 +181,7 @@ int main()
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);
     }
-
+    }
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();

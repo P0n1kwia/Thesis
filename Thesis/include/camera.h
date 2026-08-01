@@ -24,6 +24,7 @@ public:
     glm::vec3 getForward()    const;
     float     getFovY()       const;
     float     getAspect()     const;
+    float     getRadius()     const;
 
     void orbit(float deltYaw, float deltaPitch, float multi);
     void zoom(float delta, float sensitivity = 0.5f);
@@ -35,7 +36,8 @@ public:
     void onSortComplete();
 
 private:
-    void recompute();
+
+    void recompute() const;
 
     glm::vec3 target;
     float     radius;
@@ -48,12 +50,10 @@ private:
     float nearPlane;
     float farPlane;
 
-
-    glm::vec3 eye;
-    glm::mat4 viewMatrix;
-    glm::mat4 projMatrix;
     glm::vec3 lastSortPos;
+    mutable glm::vec3 eye;
+    mutable glm::mat4 viewMatrix;
+    mutable glm::mat4 projMatrix;
+    mutable bool dirty = true;
 
-
-    bool dirty = true;
 };

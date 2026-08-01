@@ -21,20 +21,12 @@ const glm::mat4& Camera::getViewMatrix()
 	return viewMatrix;
 }
 
-const glm::mat4& Camera::getProjMatrix() const
-{
-	return projMatrix;
-}
+const glm::mat4& Camera::getProjMatrix() const { if (dirty) recompute(); return projMatrix; }
 
-glm::vec3 Camera::getPosition() const
-{
-	return eye;
-}
+glm::vec3 Camera::getPosition() const { if (dirty) recompute(); return eye; }
 
-glm::vec3 Camera::getForward() const
-{
-	return glm::normalize(target - eye);
-}
+
+glm::vec3 Camera::getForward() const { if (dirty) recompute(); return glm::normalize(target - eye); }
 
 float Camera::getFovY() const
 {
@@ -46,10 +38,15 @@ float Camera::getAspect() const
 	return aspect;
 }
 
-void Camera::orbit(float deltYaw, float deltaPitch, float multi)
+float Camera::getRadius() const
 {
-	yaw += deltYaw * multi;
-	pitch += deltaPitch * multi;
+	return radius;
+}
+
+void Camera::orbit(float deltaYaw, float deltaPitch, float multi)
+{
+	yaw += deltaYaw * multi;
+	pitch = glm::clamp(pitch + deltaPitch * multi, glm::radians(-89.0f), glm::radians(89.0f));
 	dirty = true;
 }
 
@@ -67,7 +64,6 @@ void Camera::pan(float dx, float dy)
 	glm::vec3 right = glm::normalize(glm::cross(glm::vec3(0.f, 1.f, 0.f), forward));
 	glm::vec3 up = glm::normalize(glm::cross(forward, right));
 	glm::vec3 offset = (right * dx) + (up * dy);
-	eye += offset;
 	target += offset;
 
 
@@ -83,8 +79,7 @@ void Camera::onViewportResize(int w, int h)
 
 bool Camera::needsSort() const
 {
-	float dist = glm::distance(lastSortPos, getPosition());
-	return dist > 1e-2f;
+	return glm::distance(lastSortPos, getPosition()) > 0.002f * radius;
 }
 
 void Camera::onSortComplete()
@@ -92,17 +87,13 @@ void Camera::onSortComplete()
 	lastSortPos = getPosition();
 }
 
-void Camera::recompute()
+void Camera::recompute() const
 {
-	pitch = glm::clamp(pitch, glm::radians(-89.0f), glm::radians(89.0f));
-	float x = radius * glm::cos(yaw) * glm::cos(pitch) ;
-	float y = radius * glm::sin(pitch) ;
-	float z = radius * glm::sin(yaw)  * glm::cos(pitch);
+	float x = radius * glm::cos(yaw) * glm::cos(pitch);
+	float y = radius * glm::sin(pitch);
+	float z = radius * glm::sin(yaw) * glm::cos(pitch);
 	eye = target + glm::vec3(x, y, z);
-
-	viewMatrix = glm::lookAt(eye, target, glm::vec3(0.0f, 1.0f, 0.0f));
+	viewMatrix = glm::lookAt(eye, target, glm::vec3(0.f, 1.f, 0.f));
 	projMatrix = glm::perspective(fovY, aspect, nearPlane, farPlane);
-
-
 	dirty = false;
 }
