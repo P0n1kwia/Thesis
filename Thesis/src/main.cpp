@@ -137,7 +137,7 @@ int main()
     try
     {
     Shader splatShader("shaders/splat_vert.glsl", "shaders/splat_frag.glsl");
-
+    //Shader computeShader(Shader::ComputeShader{}, "shaders/preprocessing.comp");
     SplatRenderer renderer;
     renderer.upload(splats);
     splatShader.use();

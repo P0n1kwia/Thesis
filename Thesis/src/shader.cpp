@@ -3,31 +3,29 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-Shader::Shader(const std::string& vertexPath, const std::string& fragmentPath)
+std::string Shader::readFile(const std::string& path)
 {
-	std::string vertexCode, fragmentCode;
-	std::fstream vertexFile, fragmentFile;
-	vertexFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-	fragmentFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
+	std::fstream file;
+	file.exceptions(std::ifstream::failbit | std::ifstream::badbit);
 	try
 	{
-		std::stringstream vertexSS, fragmentSS;
-		vertexFile.open(vertexPath);
-		vertexSS << vertexFile.rdbuf();
-		vertexFile.close();
-
-		fragmentFile.open(fragmentPath);
-		fragmentSS << fragmentFile.rdbuf();
-		fragmentFile.close();
-
-		vertexCode = vertexSS.str();
-		fragmentCode = fragmentSS.str();
-
+		std::stringstream ss;
+		file.open(path);
+		ss << file.rdbuf();
+		file.close();
+		return ss.str();
 	}
 	catch (const std::ifstream::failure& e)
 	{
-		throw std::runtime_error("Failed to open shader file (" + vertexPath + " / " + fragmentPath + "): " + e.what());
+		throw std::runtime_error("Failed to open shader file (" + path + "): " + e.what());
 	}
+}
+
+Shader::Shader(const std::string& vertexPath, const std::string& fragmentPath)
+{
+	std::string vertexCode = readFile(vertexPath);
+	std::string fragmentCode = readFile(fragmentPath);
+
 	const char* vertexSource = vertexCode.c_str();
 	const char* fragmentSource = fragmentCode.c_str();
 	unsigned int vertex = glCreateShader(GL_VERTEX_SHADER);
@@ -51,6 +49,22 @@ Shader::Shader(const std::string& vertexPath, const std::string& fragmentPath)
 	glDeleteShader(vertex);
 	glDeleteShader(fragment);
 
+}
+
+Shader::Shader(ComputeShader, const std::string& computePath)
+{
+	std::string computeCode = readFile(computePath);
+	const char* computeSource = computeCode.c_str();
+	unsigned int compute = glCreateShader(GL_COMPUTE_SHADER);
+	glShaderSource(compute, 1, &computeSource, nullptr);
+	glCompileShader(compute);
+	checkCompilationErrors(compute, "COMPUTE");
+	ID = glCreateProgram();
+	glAttachShader(ID, compute);
+	glLinkProgram(ID);
+	checkCompilationErrors(ID, "PROGRAM");
+
+	glDeleteShader(compute);
 }
 
 void Shader::use()
@@ -117,6 +131,11 @@ void Shader::setVec2(const std::string& name, const glm::vec2& vec)
 void Shader::setMat3(const std::string& name, const glm::mat3& mat)
 {
 	glUniformMatrix3fv(getUniformLocation(name), 1, GL_FALSE, &mat[0][0]);
+}
+
+void Shader::setUint(const std::string& name, unsigned int value)
+{
+	glUniform1ui(getUniformLocation(name), value);
 }
 
 Shader::~Shader()
