@@ -26,7 +26,7 @@ Shader::Shader(const std::string& vertexPath, const std::string& fragmentPath)
 	}
 	catch (const std::ifstream::failure& e)
 	{
-		std::cerr << "Failed  to open shader File! " << e.what() << "\n";
+		throw std::runtime_error("Failed to open shader file (" + vertexPath + " / " + fragmentPath + "): " + e.what());
 	}
 	const char* vertexSource = vertexCode.c_str();
 	const char* fragmentSource = fragmentCode.c_str();
@@ -67,30 +67,24 @@ void Shader::checkCompilationErrors(unsigned int shader, const std::string& type
 		glGetProgramiv(ID, GL_LINK_STATUS, &success);
 		if (!success)
 		{
-			std::cerr << "Failed to link program!\n";
-			glGetProgramInfoLog(ID, 1024, nullptr, log);
-			std::cerr << log << std::endl;
+			GLint len = 0;
+			glGetProgramiv(shader, GL_INFO_LOG_LENGTH, &len);
+			std::string log(static_cast<size_t>(len), '\0');
+			glGetProgramInfoLog(shader, len, nullptr, log.data());
+			throw std::runtime_error("Failed to link shader program:\n" + log);
 		}
 		
-	}
-	else if (type == "VERTEX")
-	{
-		glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-		if (!success)
-		{
-			std::cerr << "Failed to compile vertex shader!\n";
-			glGetShaderInfoLog(shader, 1024, nullptr, log);
-			std::cerr << log << std::endl;
-		}
 	}
 	else
 	{
 		glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
 		if (!success)
 		{
-			std::cerr << "Failed to compile fragment shader!\n";
-			glGetShaderInfoLog(shader, 1024, nullptr, log);
-			std::cerr << log << std::endl;
+			GLint len = 0;
+			glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &len);
+			std::string log(static_cast<size_t>(len), '\0');
+			glGetShaderInfoLog(shader, len, nullptr, log.data());
+			throw std::runtime_error("Failed to compile " + type + " shader:\n" + log);
 		}
 	}
 }

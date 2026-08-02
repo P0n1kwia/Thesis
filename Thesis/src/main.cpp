@@ -134,13 +134,14 @@ int main()
     auto splats = loadSplats("resources/point_cloud.ply");
     std::cout << "Loaded " << splats.size() << " splats\n";
 
+    try
     {
     Shader splatShader("shaders/splat_vert.glsl", "shaders/splat_frag.glsl");
 
     SplatRenderer renderer;
     renderer.upload(splats);
     splatShader.use();
-    splatShader.setVec2("uScreenSize", glm::vec2(1280, 720)); // no hard coded values!!
+    splatShader.setVec2("uScreenSize", glm::vec2(WINDOW_WIDTH, WINDOW_HEIGHT)); 
 
     while (!glfwWindowShouldClose(window))
     {
@@ -181,6 +182,10 @@ int main()
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);
     }
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "Fatal error: " << e.what() << "\n";
     }
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
