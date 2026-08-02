@@ -18,7 +18,14 @@ out flat mat2 vICov2D; //symetric so we need a,b,c [a,b, c]
 
 const float SH_C0 = 0.28209479177387814;
 const float SH_C1 = 0.4886025119029199;
-const uint SPLAT_STRIDE = 23u;
+const float SH_C2[5] = float[5](
+	1.0925484305920792,
+	-1.0925484305920792,
+	0.31539156525252005,
+	-1.0925484305920792,
+	0.5462742152960396
+);
+const uint SPLAT_STRIDE = 38u;
 void main()
 {
 	uint id = splatIndex[gl_InstanceID];
@@ -33,10 +40,24 @@ void main()
 	vec3 c2 =		  vec3(splatData[base + 17u], splatData[base+18u], splatData[base + 19u]);
 	vec3 c3 =		  vec3(splatData[base + 20u], splatData[base+21u], splatData[base + 22u]);
 
+	vec3  c4          = vec3(splatData[base + 23u], splatData[base + 24u], splatData[base + 25u]);
+	vec3  c5          = vec3(splatData[base + 26u], splatData[base + 27u], splatData[base + 28u]);
+	vec3  c6          = vec3(splatData[base + 29u], splatData[base + 30u], splatData[base + 31u]);
+	vec3  c7          = vec3(splatData[base + 32u], splatData[base + 33u], splatData[base + 34u]);
+	vec3  c8          = vec3(splatData[base + 35u], splatData[base + 36u], splatData[base + 37u]);
+
 	vec3 worldPos = vec3(uModel * vec4(aPos, 1.0));
 	vec3 dir = normalize(worldPos - uCamPos);
 	float dx = dir.x, dy = dir.y, dz = dir.z;
-	vec3 color = SH_C0 * aSh + SH_C1 * (-dy * c1 + dz * c2 - dx * c3);
+	float xx = dx * dx, yy = dy * dy, zz = dz * dz;
+	float xy = dx * dy, yz = dy * dz, xz = dx * dz;
+	vec3 color = SH_C0 * aSh
+	           + SH_C1 * (-dy * c1 + dz * c2 - dx * c3)
+	           + SH_C2[0] * xy * c4
+	           + SH_C2[1] * yz * c5
+	           + SH_C2[2] * (2.0 * zz - xx - yy) * c6
+	           + SH_C2[3] * xz * c7
+	           + SH_C2[4] * (xx - yy) * c8;
 	vSh = color + 0.5;
 	vOpacity = aOpacity;
 
