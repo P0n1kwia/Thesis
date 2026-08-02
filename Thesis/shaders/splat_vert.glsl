@@ -1,10 +1,9 @@
 #version 430 core
-layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec3 aSh;
-layout (location = 2) in float aOpacity;
-layout (location = 3) in vec3 aScale;
-layout (location = 4) in vec4 aQuaternion;
+
 layout (location = 5) in vec3 aQuadPos;
+
+layout(std430,binding =0) readonly buffer SplatsBuffer{float splatData[];};
+layout(std430, binding=1) readonly buffer IndexBuffer{int splatIndex[];};
 
 uniform mat4 uView;
 uniform mat4 uProj;
@@ -17,9 +16,17 @@ out flat vec2 vCenterPos;
 out flat mat2 vICov2D; //symetric so we need a,b,c [a,b, c]
 
 
-
+const uint SPLAT_STRIDE = 14u;
 void main()
 {
+	uint id = splatIndex[gl_InstanceID];
+	uint base  = id * SPLAT_STRIDE;
+	vec3  aPos        = vec3(splatData[base + 0u], splatData[base + 1u], splatData[base + 2u]);
+	vec3  aSh         = vec3(splatData[base + 3u], splatData[base + 4u], splatData[base + 5u]);
+	float aOpacity    = splatData[base + 6u];
+	vec3  aScale      = vec3(splatData[base + 7u], splatData[base + 8u], splatData[base + 9u]);
+	vec4  aQuaternion = vec4(splatData[base + 10u], splatData[base + 11u], splatData[base + 12u], splatData[base + 13u]);
+
 	vSh = aSh;
 	vOpacity = aOpacity;
 

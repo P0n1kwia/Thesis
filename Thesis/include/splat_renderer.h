@@ -13,9 +13,12 @@ public:
 	~SplatRenderer();
 private:
 	unsigned int VAO;
-	unsigned int VBO;
 	unsigned int EBO;
 	unsigned int quadVBO;
+	unsigned int splatSSBO;
+	unsigned int indexSSBO;
 	std::vector<Splat> splatsVector;
+	std::vector<uint32_t> indices;
+	std::vector<float> depths;
 	glm::mat4 model{glm::mat4(1,0,0,0, 0,-1,0,0, 0,0,-1,0, 0,0,0,1) };
 };

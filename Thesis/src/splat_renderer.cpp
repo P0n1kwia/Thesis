@@ -1,26 +1,31 @@
 #include <splat_renderer.h>
 #include <glad/gl.h>
 #include <algorithm>
+#include <numeric>
+
+namespace
+{
+	constexpr unsigned int SPLAT_SSBO_BINDING = 0;
+	constexpr unsigned int INDEX_SSBO_BINDING = 1;
+}
 void SplatRenderer::upload(const std::vector<Splat>& splats)
 {
 	splatsVector = splats;
+	uint32_t n = static_cast<uint32_t>(splatsVector.size());
 	const float quad[] = {
 		 1.0f,  1.0f, 0.0f,   
 		 1.0f, -1.0f, 0.0f,
 		-1.0f, -1.0f, 0.0f,
 		-1.0f,  1.0f, 0.0f
 	};
-	const int indices[] = {
+	const int quadIndices[] = {
 		0,1,3,
 		1,2,3
 	};
 
 
 	glGenVertexArrays(1, &VAO);
-	glGenBuffers(1, &VBO);
-
 	glBindVertexArray(VAO);
-
 	glGenBuffers(1, &quadVBO);
 	glGenBuffers(1, &EBO);
 	glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
@@ -28,34 +33,27 @@ void SplatRenderer::upload(const std::vector<Splat>& splats)
 	glVertexAttribPointer(5, 3, GL_FLOAT, GL_FALSE, 3*sizeof(float), (void*)0);
 	glEnableVertexAttribArray(5);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quadIndices), quadIndices, GL_STATIC_DRAW);
 
-
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(Splat) * splatsVector.size(), splats.data(), GL_STATIC_DRAW);
-	
-	
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 56, (void*)0);
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 56, (void*)(3 * sizeof(float)));
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, 56, (void*)(6 * sizeof(float)));
-	glEnableVertexAttribArray(2);
-	glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 56, (void*)(7 * sizeof(float)));
-	glEnableVertexAttribArray(3);
-	glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 56, (void*)(10 * sizeof(float)));
-	glEnableVertexAttribArray(4);
-
-	glVertexAttribDivisor(0, 1);
-	glVertexAttribDivisor(1, 1);
-	glVertexAttribDivisor(2, 1);
-	glVertexAttribDivisor(3, 1);
-	glVertexAttribDivisor(4, 1);
-	
-
-	
-	
 	glBindVertexArray(0);
+
+	glGenBuffers(1, &splatSSBO);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, splatSSBO);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Splat) * n, splatsVector.data(), GL_STATIC_DRAW);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, SPLAT_SSBO_BINDING, splatSSBO);
+	
+
+	indices.resize(n);
+	std::iota(indices.begin(), indices.end(), 0u);
+	depths.resize(n);
+
+	glGenBuffers(1, &indexSSBO);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, indexSSBO);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(uint32_t) * n, indices.data(), GL_DYNAMIC_DRAW);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, INDEX_SSBO_BINDING, indexSSBO);
+
+
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 }
 
 void SplatRenderer::draw(Shader& shader, Camera& camera)
@@ -71,35 +69,28 @@ void SplatRenderer::draw(Shader& shader, Camera& camera)
 void SplatRenderer::sort(Camera& camera)
 {
 	uint32_t n = splatsVector.size();
-	std::vector<float> depths(n);
-	std::vector<uint32_t> indices(n);
-	glm::mat4 view = camera.getViewMatrix();
-	glm::mat4 MV = view * model;
+	glm::mat4 MV = camera.getViewMatrix() * model;
 	
 	for (uint32_t i = 0; i < n; i++)
 	{
 		glm::vec3 viewPos = glm::vec3(MV * glm::vec4(splatsVector[i].position[0], splatsVector[i].position[1], splatsVector[i].position[2], 1.0f));
 		depths[i] = -viewPos.z;
-		indices[i] = i;
+
 	}
-	std::sort(indices.begin(), indices.end(), [&depths](int a, int b) {
+	std::sort(indices.begin(), indices.end(), [this](int a, int b) {
 		return depths[a] > depths[b];
 		});
-	std::vector<Splat> sortedSplats(n);
-	for (uint32_t i = 0; i < n; i++)
-	{
-		int original = indices[i];
-		sortedSplats[i] = splatsVector[original];
-	}
-	splatsVector = sortedSplats;
-	glBindBuffer(GL_ARRAY_BUFFER, VBO);
-	glBufferSubData(GL_ARRAY_BUFFER, 0, sortedSplats.size() * sizeof(Splat), sortedSplats.data());
+
+
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, indexSSBO);
+	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, indices.size() * sizeof(uint32_t), indices.data());
 }
 
 SplatRenderer::~SplatRenderer()
 {
 	glDeleteVertexArrays(1, &VAO);
-	glDeleteBuffers(1, &VBO);
+	glDeleteBuffers(1, &splatSSBO);
+	glDeleteBuffers(1, &indexSSBO);
 	glDeleteBuffers(1, &EBO);
 	glDeleteBuffers(1, &quadVBO);
 }
