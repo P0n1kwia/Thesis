@@ -7,48 +7,51 @@ namespace
 {
 	constexpr unsigned int SPLAT_SSBO_BINDING = 0;
 	constexpr unsigned int INDEX_SSBO_BINDING = 1;
+	constexpr unsigned int PREPROC_SSBO_BINDING = 2;
 }
 void SplatRenderer::upload(const std::vector<Splat>& splats)
 {
 	if (VAO == 0) initGL();
 	splatsVector = splats;
-	uint32_t n = static_cast<uint32_t>(splatsVector.size());
+	splatCount = static_cast<uint32_t>(splatsVector.size());
+
 	
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, splatSSBO);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Splat) * n, splatsVector.data(), GL_STATIC_DRAW);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Splat) * splatCount, splatsVector.data(), GL_STATIC_DRAW);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, SPLAT_SSBO_BINDING, splatSSBO);
 	
 
-	indices.resize(n);
+	indices.resize(splatCount);
 	std::iota(indices.begin(), indices.end(), 0u);
-	depths.resize(n);
+	depths.resize(splatCount);
 
 	
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, indexSSBO);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(uint32_t) * n, indices.data(), GL_DYNAMIC_DRAW);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(uint32_t) * splatCount, indices.data(), GL_DYNAMIC_DRAW);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, INDEX_SSBO_BINDING, indexSSBO);
+
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, preprocSSBO);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(glm::vec4) * 3 * splatCount, nullptr, GL_DYNAMIC_COPY);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, PREPROC_SSBO_BINDING, preprocSSBO);
 
 
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 }
 
-void SplatRenderer::draw(Shader& shader, Camera& camera)
+void SplatRenderer::draw(Shader& shader, Camera& camera,const glm::vec2& screenSize)
 {
 	
-	shader.setMat4("uView", camera.getViewMatrix());
-	shader.setMat4("uProj", camera.getProjMatrix());
-	shader.setMat4("uModel", model);
-	shader.setVec3("uCamPos", camera.getPosition());
+	shader.setVec2("uScreenSize", screenSize);
 	glBindVertexArray(VAO);
 	glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0, splatsVector.size());
 }
 
 void SplatRenderer::sort(Camera& camera)
 {
-	uint32_t n = splatsVector.size();
+	splatCount = splatsVector.size();
 	glm::mat4 MV = camera.getViewMatrix() * model;
 	
-	for (uint32_t i = 0; i < n; i++)
+	for (uint32_t i = 0; i < splatCount; i++)
 	{
 		glm::vec3 viewPos = glm::vec3(MV * glm::vec4(splatsVector[i].position[0], splatsVector[i].position[1], splatsVector[i].position[2], 1.0f));
 		depths[i] = -viewPos.z;
@@ -63,6 +66,23 @@ void SplatRenderer::sort(Camera& camera)
 	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, indices.size() * sizeof(uint32_t), indices.data());
 }
 
+void SplatRenderer::preprocess(Shader& computeShader, Camera& camera, const glm::vec2& screenSize)
+{
+	computeShader.use();
+	computeShader.setMat4("uView", camera.getViewMatrix());
+	computeShader.setMat4("uProj", camera.getProjMatrix());
+	computeShader.setMat4("uModel", model);
+	computeShader.setVec3("uCamPos", camera.getPosition());
+	computeShader.setVec2("uScreenSize", screenSize);
+	computeShader.setUInt("uCount", splatCount);
+
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, SPLAT_SSBO_BINDING, splatSSBO);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, PREPROC_SSBO_BINDING, preprocSSBO);
+
+	glDispatchCompute((splatCount + 255u) / 256u, 1, 1);
+	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+}
+
 SplatRenderer::~SplatRenderer()
 {
 	glDeleteVertexArrays(1, &VAO);
@@ -70,6 +90,7 @@ SplatRenderer::~SplatRenderer()
 	glDeleteBuffers(1, &indexSSBO);
 	glDeleteBuffers(1, &EBO);
 	glDeleteBuffers(1, &quadVBO);
+	glDeleteBuffers(1, &preprocSSBO);
 }
 
 void SplatRenderer::initGL()
@@ -101,4 +122,5 @@ void SplatRenderer::initGL()
 
 	glGenBuffers(1, &splatSSBO);
 	glGenBuffers(1, &indexSSBO);
+	glGenBuffers(1, &preprocSSBO);
 }

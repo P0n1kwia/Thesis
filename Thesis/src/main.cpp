@@ -137,7 +137,7 @@ int main()
     try
     {
     Shader splatShader("shaders/splat_vert.glsl", "shaders/splat_frag.glsl");
-    //Shader computeShader(Shader::ComputeShader{}, "shaders/preprocessing.comp");
+    Shader computeShader(Shader::ComputeShader{}, "shaders/preprocessing.comp");
     SplatRenderer renderer;
     renderer.upload(splats);
     splatShader.use();
@@ -177,7 +177,10 @@ int main()
             renderer.sort(camera);
             camera.onSortComplete();
         }
-        renderer.draw(splatShader, camera);
+        renderer.preprocess(computeShader, camera, glm::vec2(w, h));
+        splatShader.use();
+        splatShader.setVec2("uScreenSize", glm::vec2(w, h));
+        renderer.draw(splatShader, camera,glm::vec2(w,h));
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);

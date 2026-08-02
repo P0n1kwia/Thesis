@@ -1,122 +1,36 @@
 #version 430 core
 
-layout (location = 5) in vec3 aQuadPos;
+layout(location = 5) in vec3 aQuadPos;      
 
-layout(std430,binding =0) readonly buffer SplatsBuffer{float splatData[];};
-layout(std430, binding=1) readonly buffer IndexBuffer{int splatIndex[];};
+layout(std430, binding = 1) readonly buffer IndexBuffer   { uint splatIndex[]; };
+layout(std430, binding = 2) readonly buffer PreprocBuffer { vec4 preprocBuffer[]; };
 
-uniform mat4 uView;
-uniform mat4 uProj;
 uniform vec2 uScreenSize;
-uniform mat4 uModel;
-uniform vec3 uCamPos;
 
 out vec3 vSh;
 out float vOpacity;
 out flat vec2 vCenterPos;
-out flat mat2 vICov2D; //symetric so we need a,b,c [a,b, c]
+out flat mat2 vICov2D;
 
-const float SH_C0 = 0.28209479177387814;
-const float SH_C1 = 0.4886025119029199;
-const float SH_C2[5] = float[5](
-	1.0925484305920792,
-	-1.0925484305920792,
-	0.31539156525252005,
-	-1.0925484305920792,
-	0.5462742152960396
-);
-const uint SPLAT_STRIDE = 38u;
 void main()
 {
-	uint id = splatIndex[gl_InstanceID];
-	uint base  = id * SPLAT_STRIDE;
-	vec3  aPos        = vec3(splatData[base + 0u], splatData[base + 1u], splatData[base + 2u]);
-	vec3  aSh         = vec3(splatData[base + 3u], splatData[base + 4u], splatData[base + 5u]);
-	float aOpacity    = splatData[base + 6u];
-	vec3  aScale      = vec3(splatData[base + 7u], splatData[base + 8u], splatData[base + 9u]);
-	vec4  aQuaternion = vec4(splatData[base + 10u], splatData[base + 11u], splatData[base + 12u], splatData[base + 13u]);
+    uint id = splatIndex[gl_InstanceID];
 
-	vec3 c1 =		  vec3(splatData[base + 14u], splatData[base+15u], splatData[base + 16u]);
-	vec3 c2 =		  vec3(splatData[base + 17u], splatData[base+18u], splatData[base + 19u]);
-	vec3 c3 =		  vec3(splatData[base + 20u], splatData[base+21u], splatData[base + 22u]);
+    vec4 p0 = preprocBuffer[3u*id + 0u];
+    vec4 p1 = preprocBuffer[3u*id + 1u];
+    vec4 p2 = preprocBuffer[3u*id + 2u];
 
-	vec3  c4          = vec3(splatData[base + 23u], splatData[base + 24u], splatData[base + 25u]);
-	vec3  c5          = vec3(splatData[base + 26u], splatData[base + 27u], splatData[base + 28u]);
-	vec3  c6          = vec3(splatData[base + 29u], splatData[base + 30u], splatData[base + 31u]);
-	vec3  c7          = vec3(splatData[base + 32u], splatData[base + 33u], splatData[base + 34u]);
-	vec3  c8          = vec3(splatData[base + 35u], splatData[base + 36u], splatData[base + 37u]);
+    vec2 center = p0.xy;
+    vec2 extent = p0.zw;
 
-	vec3 worldPos = vec3(uModel * vec4(aPos, 1.0));
-	vec3 dir = normalize(worldPos - uCamPos);
-	float dx = dir.x, dy = dir.y, dz = dir.z;
-	float xx = dx * dx, yy = dy * dy, zz = dz * dz;
-	float xy = dx * dy, yz = dy * dz, xz = dx * dz;
-	vec3 color = SH_C0 * aSh
-	           + SH_C1 * (-dy * c1 + dz * c2 - dx * c3)
-	           + SH_C2[0] * xy * c4
-	           + SH_C2[1] * yz * c5
-	           + SH_C2[2] * (2.0 * zz - xx - yy) * c6
-	           + SH_C2[3] * xz * c7
-	           + SH_C2[4] * (xx - yy) * c8;
-	vSh = color + 0.5;
-	vOpacity = aOpacity;
+    if (extent.x <= 0.0) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
 
-	mat3 S = mat3(
-    vec3(aScale.x, 0.0, 0.0),
-    vec3(0.0, aScale.y, 0.0),
-    vec3(0.0, 0.0, aScale.z)
-	);
-	float w = aQuaternion.x;
-	float x = aQuaternion.y;
-	float y = aQuaternion.z;
-	float z = aQuaternion.w;
-	mat3 R = mat3(
-	vec3(1-2*(y*y+z*z), 2*(x*y - w*z), 2*(x*z + w*y)),
-	vec3(2*(x*y + w*z), 1-2*(x*x+z*z), 2*(z*y - w*x)),
-	vec3(2*(x*z - w*y), 2*(y*z + w*x), 1-2*(x*x+y*y))
-	);
+    vCenterPos = center;
+    vICov2D    = mat2(p1.x, p1.y, p1.y, p1.z);  
+    vSh        = p2.rgb;
+    vOpacity   = p2.a;
 
-	mat3 M = R * S;
-	mat3 Mt = transpose(M);
-	mat3 Cov = M*Mt;
-	mat4 MV = uView * uModel;
-	vec4 t = MV * vec4(aPos,1.0);
-	float fx = uProj[0].x * uScreenSize.x * 0.5; 
-	float fy = uProj[1].y * uScreenSize.y * 0.5;
-
-	float tz = -t.z;
-	if (tz < 0.2) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
-	float limx = 1.3 * (uScreenSize.x * 0.5) / fx;
-	float limy = 1.3 * (uScreenSize.y * 0.5) / fy;
-	float tx = clamp(t.x / tz, -limx, limx) * tz;
-	float ty = clamp(t.y / tz, -limy, limy) * tz;
-	mat3 J = mat3(
-		vec3(fx / tz, 0.0,     fx * tx / (tz*tz)),
-		vec3(0.0,     fy / tz, fy * ty / (tz*tz)),
-		vec3(0.0,     0.0,     0.0)
-	);
-	mat3 W = mat3(MV);
-	mat3 Cov2D = J * W * Cov * transpose(W) * transpose(J);
-	mat2 D2 = mat2(
-	vec2(Cov2D[0].xy),
-	vec2(Cov2D[1].xy)
-	);
-	D2[0][0] += 0.3;
-	D2[1][1] += 0.3;
-
-	const float MAX_SPLAT_RADIUS_PX = 1024.0;
-	vec2 extent = min(vec2(
-		ceil(3.0 * sqrt(max(0.000001, D2[0][0]))),
-		ceil(3.0 * sqrt(max(0.000001, D2[1][1])))
-	), vec2(MAX_SPLAT_RADIUS_PX));
-
-	vec4 clipPos = uProj * t;
-	vCenterPos = vec2((clipPos.xyz/clipPos.w) * 0.5 + 0.5) * uScreenSize;
-
-	clipPos.xy += aQuadPos.xy * extent * vec2(2.0) / uScreenSize * clipPos.w;
-
-
-	vICov2D = inverse(D2);
-
-	gl_Position = clipPos;
+    vec2 px  = center + aQuadPos.xy * extent;
+    vec2 ndc = px / uScreenSize * 2.0 - 1.0;
+    gl_Position = vec4(ndc, 0.0, 1.0);
 }
