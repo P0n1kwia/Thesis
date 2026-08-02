@@ -1,6 +1,7 @@
 #pragma once
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <limits>
 
 struct CameraConfig {
     float fovY = glm::radians(45.f);
@@ -50,7 +51,7 @@ private:
     float nearPlane;
     float farPlane;
 
-    glm::vec3 lastSortPos;
+    glm::vec3 lastSortPos{ std::numeric_limits<float>::infinity() };
     mutable glm::vec3 eye;
     mutable glm::mat4 viewMatrix;
     mutable glm::mat4 projMatrix;

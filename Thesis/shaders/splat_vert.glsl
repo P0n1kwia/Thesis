@@ -73,11 +73,12 @@ void main()
 	D2[0][0] += 0.3;
 	D2[1][1] += 0.3;
 
-	vec2 extent = vec2(
+	const float MAX_SPLAT_RADIUS_PX = 1024.0;
+	vec2 extent = min(vec2(
 		ceil(3.0 * sqrt(max(0.000001, D2[0][0]))),
 		ceil(3.0 * sqrt(max(0.000001, D2[1][1])))
-	);
-	
+	), vec2(MAX_SPLAT_RADIUS_PX));
+
 	vec4 clipPos = uProj * t;
 	vCenterPos = vec2((clipPos.xyz/clipPos.w) * 0.5 + 0.5) * uScreenSize;
 

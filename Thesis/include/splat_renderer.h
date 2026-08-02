@@ -11,12 +11,18 @@ public:
 	void sort(Camera& camera);
 
 	~SplatRenderer();
+	SplatRenderer() = default;
+	SplatRenderer(const SplatRenderer&) = delete;
+	SplatRenderer& operator=(const SplatRenderer&) = delete;
 private:
-	unsigned int VAO;
-	unsigned int EBO;
-	unsigned int quadVBO;
-	unsigned int splatSSBO;
-	unsigned int indexSSBO;
+
+	void initGL();
+
+	unsigned int VAO = 0;
+	unsigned int EBO = 0;
+	unsigned int quadVBO = 0;
+	unsigned int splatSSBO = 0;
+	unsigned int indexSSBO = 0;
 	std::vector<Splat> splatsVector;
 	std::vector<uint32_t> indices;
 	std::vector<float> depths;

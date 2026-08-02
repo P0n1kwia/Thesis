@@ -10,34 +10,10 @@ namespace
 }
 void SplatRenderer::upload(const std::vector<Splat>& splats)
 {
+	if (VAO == 0) initGL();
 	splatsVector = splats;
 	uint32_t n = static_cast<uint32_t>(splatsVector.size());
-	const float quad[] = {
-		 1.0f,  1.0f, 0.0f,   
-		 1.0f, -1.0f, 0.0f,
-		-1.0f, -1.0f, 0.0f,
-		-1.0f,  1.0f, 0.0f
-	};
-	const int quadIndices[] = {
-		0,1,3,
-		1,2,3
-	};
-
-
-	glGenVertexArrays(1, &VAO);
-	glBindVertexArray(VAO);
-	glGenBuffers(1, &quadVBO);
-	glGenBuffers(1, &EBO);
-	glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
-	glVertexAttribPointer(5, 3, GL_FLOAT, GL_FALSE, 3*sizeof(float), (void*)0);
-	glEnableVertexAttribArray(5);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quadIndices), quadIndices, GL_STATIC_DRAW);
-
-	glBindVertexArray(0);
-
-	glGenBuffers(1, &splatSSBO);
+	
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, splatSSBO);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Splat) * n, splatsVector.data(), GL_STATIC_DRAW);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, SPLAT_SSBO_BINDING, splatSSBO);
@@ -47,7 +23,7 @@ void SplatRenderer::upload(const std::vector<Splat>& splats)
 	std::iota(indices.begin(), indices.end(), 0u);
 	depths.resize(n);
 
-	glGenBuffers(1, &indexSSBO);
+	
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, indexSSBO);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(uint32_t) * n, indices.data(), GL_DYNAMIC_DRAW);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, INDEX_SSBO_BINDING, indexSSBO);
@@ -93,4 +69,35 @@ SplatRenderer::~SplatRenderer()
 	glDeleteBuffers(1, &indexSSBO);
 	glDeleteBuffers(1, &EBO);
 	glDeleteBuffers(1, &quadVBO);
+}
+
+void SplatRenderer::initGL()
+{
+	const float quad[] = {
+		 1.0f,  1.0f, 0.0f,
+		 1.0f, -1.0f, 0.0f,
+		-1.0f, -1.0f, 0.0f,
+		-1.0f,  1.0f, 0.0f
+	};
+	const int quadIndices[] = {
+		0,1,3,
+		1,2,3
+	};
+
+
+	glGenVertexArrays(1, &VAO);
+	glBindVertexArray(VAO);
+	glGenBuffers(1, &quadVBO);
+	glGenBuffers(1, &EBO);
+	glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+	glVertexAttribPointer(5, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(5);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quadIndices), quadIndices, GL_STATIC_DRAW);
+
+	glBindVertexArray(0);
+
+	glGenBuffers(1, &splatSSBO);
+	glGenBuffers(1, &indexSSBO);
 }
