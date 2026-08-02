@@ -1,6 +1,21 @@
 #include <load_splat.h>
 #include <algorithm>
 #include <cmath>
+
+namespace
+{
+    std::vector<float> tryGetProperty(happly::PLYData & ply, const std::string& name, size_t n)
+    {
+        try
+        {
+            return ply.getElement("vertex").getProperty<float>(name);
+        }
+        catch (...)
+        {
+            return std::vector<float>(n, 0.0f);
+        }
+    }
+}
 std::vector<Splat> loadSplats(const std::string& path)
 {
     happly::PLYData plyData(path);
@@ -24,6 +39,17 @@ std::vector<Splat> loadSplats(const std::string& path)
     auto q2 = plyData.getElement("vertex").getProperty<float>("rot_2");
     auto q3 = plyData.getElement("vertex").getProperty<float>("rot_3");
 
+    size_t n = x.size();
+    auto r1 = tryGetProperty(plyData, "f_rest_0", n);
+    auto r2 = tryGetProperty(plyData, "f_rest_1", n);
+    auto r3 = tryGetProperty(plyData, "f_rest_2", n);
+    auto g1 = tryGetProperty(plyData, "f_rest_15", n);
+    auto g2 = tryGetProperty(plyData, "f_rest_16", n);
+    auto g3 = tryGetProperty(plyData, "f_rest_17", n);
+    auto b1 = tryGetProperty(plyData, "f_rest_30", n);
+    auto b2 = tryGetProperty(plyData, "f_rest_31", n);
+    auto b3 = tryGetProperty(plyData, "f_rest_32", n);
+
     std::vector<Splat> splats(x.size());
     float SH_C0 = 0.28209479177f;
     for (size_t i = 0; i < x.size(); i++)
@@ -32,9 +58,9 @@ std::vector<Splat> loadSplats(const std::string& path)
         splats[i].position[1] = y[i];
         splats[i].position[2] = z[i];
 
-        splats[i].sh[0] = std::clamp(0.5f + SH_C0 * sh0[i], 0.0f, 1.0f);
-        splats[i].sh[1] = std::clamp(0.5f + SH_C0 * sh1[i], 0.0f, 1.0f);
-        splats[i].sh[2] = std::clamp(0.5f + SH_C0 * sh2[i], 0.0f, 1.0f);
+        splats[i].sh[0] = sh0[i];
+        splats[i].sh[1] = sh1[i];
+        splats[i].sh[2] = sh2[i];
         
         splats[i].opacity = (1.0f) / (1.0f + std::exp((-opa[i])));
 
@@ -48,6 +74,17 @@ std::vector<Splat> loadSplats(const std::string& path)
         splats[i].quaternion[1] = q1[i]/len;
         splats[i].quaternion[2] = q2[i]/len;
         splats[i].quaternion[3] = q3[i]/len;
+
+        splats[i].sh_rest[0] = r1[i];
+        splats[i].sh_rest[1] = r2[i];
+        splats[i].sh_rest[2] = r3[i];
+
+        splats[i].sh_rest[3] = g1[i];
+        splats[i].sh_rest[4] = g2[i];
+        splats[i].sh_rest[5] = g3[i];
+        splats[i].sh_rest[6] = b1[i];
+        splats[i].sh_rest[7] = b2[i];
+        splats[i].sh_rest[8] = b3[i];
     }
     return splats;
 }

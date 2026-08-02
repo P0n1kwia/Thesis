@@ -9,14 +9,16 @@ uniform mat4 uView;
 uniform mat4 uProj;
 uniform vec2 uScreenSize;
 uniform mat4 uModel;
+uniform vec3 uCamPos;
 
 out vec3 vSh;
 out float vOpacity;
 out flat vec2 vCenterPos;
 out flat mat2 vICov2D; //symetric so we need a,b,c [a,b, c]
 
-
-const uint SPLAT_STRIDE = 14u;
+const float SH_C0 = 0.28209479177387814;
+const float SH_C1 = 0.4886025119029199;
+const uint SPLAT_STRIDE = 23u;
 void main()
 {
 	uint id = splatIndex[gl_InstanceID];
@@ -27,7 +29,15 @@ void main()
 	vec3  aScale      = vec3(splatData[base + 7u], splatData[base + 8u], splatData[base + 9u]);
 	vec4  aQuaternion = vec4(splatData[base + 10u], splatData[base + 11u], splatData[base + 12u], splatData[base + 13u]);
 
-	vSh = aSh;
+	vec3 c1 =		  vec3(splatData[base + 14u], splatData[base+15u], splatData[base + 16u]);
+	vec3 c2 =		  vec3(splatData[base + 17u], splatData[base+18u], splatData[base + 19u]);
+	vec3 c3 =		  vec3(splatData[base + 20u], splatData[base+21u], splatData[base + 22u]);
+
+	vec3 worldPos = vec3(uModel * vec4(aPos, 1.0));
+	vec3 dir = normalize(worldPos - uCamPos);
+	float dx = dir.x, dy = dir.y, dz = dir.z;
+	vec3 color = SH_C0 * aSh + SH_C1 * (-dy * c1 + dz * c2 - dx * c3);
+	vSh = color + 0.5;
 	vOpacity = aOpacity;
 
 	mat3 S = mat3(

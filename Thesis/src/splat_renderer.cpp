@@ -38,6 +38,7 @@ void SplatRenderer::draw(Shader& shader, Camera& camera)
 	shader.setMat4("uView", camera.getViewMatrix());
 	shader.setMat4("uProj", camera.getProjMatrix());
 	shader.setMat4("uModel", model);
+	shader.setVec3("uCamPos", camera.getPosition());
 	glBindVertexArray(VAO);
 	glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0, splatsVector.size());
 }
