@@ -24,6 +24,8 @@ const float SH_C2[5] = float[5](
 );
 const uint SPLAT_STRIDE = 38u;
 
+const float MIN_OPACITY = 0.0039;
+
 bool insideFrustum(vec3 p, float radius)
 {
 	for(int k = 0; k<6; ++k)
@@ -38,9 +40,10 @@ void main()
     uint base = i * SPLAT_STRIDE;
 	vec3  aPos        = vec3(splatData[base + 0u], splatData[base + 1u], splatData[base + 2u]);
 	vec3  aScale      = vec3(splatData[base + 7u], splatData[base + 8u], splatData[base + 9u]);
+	float aOpacity    = splatData[base + 6u];
 	vec3  worldPos    = vec3(uModel * vec4(aPos, 1.0));
 	float radius      = 3.0 * max(aScale.x, max(aScale.y,aScale.z));
-	if(!insideFrustum(worldPos, radius))
+	if(aOpacity < MIN_OPACITY || !insideFrustum(worldPos, radius))
 	{
         preprocBuffer[3u*i + 0u] = vec4(0.0);
         preprocBuffer[3u*i + 1u] = vec4(0.0);
@@ -48,8 +51,6 @@ void main()
         return;
 	}
 	vec3  aSh         = vec3(splatData[base + 3u], splatData[base + 4u], splatData[base + 5u]);
-
-	float aOpacity    = splatData[base + 6u];
 
 	vec4  aQuaternion = vec4(splatData[base + 10u], splatData[base + 11u], splatData[base + 12u], splatData[base + 13u]);
 

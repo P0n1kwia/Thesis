@@ -1,6 +1,7 @@
 #include <splat_renderer.h>
 #include <glad/gl.h>
 #include <algorithm>
+#include <execution>
 #include <numeric>
 #include <utils.h>
 
@@ -15,6 +16,7 @@ void SplatRenderer::upload(const std::vector<Splat>& splats)
 	if (VAO == 0) initGL();
 	splatsVector = splats;
 	splatCount = static_cast<uint32_t>(splatsVector.size());
+	hasValidPreprocess = false;
 
 	
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, splatSSBO);
@@ -58,7 +60,7 @@ void SplatRenderer::sort(Camera& camera)
 		depths[i] = -viewPos.z;
 
 	}
-	std::sort(indices.begin(), indices.end(), [this](int a, int b) {
+	std::sort(std::execution::par_unseq, indices.begin(), indices.end(), [this](int a, int b) {
 		return depths[a] > depths[b];
 		});
 
@@ -69,17 +71,31 @@ void SplatRenderer::sort(Camera& camera)
 
 void SplatRenderer::preprocess(Shader& computeShader, Camera& camera, const glm::vec2& screenSize)
 {
+	const glm::mat4& view = camera.getViewMatrix();
+	const glm::mat4& proj = camera.getProjMatrix();
+	glm::vec3 camPos = camera.getPosition();
+
+
+	if (hasValidPreprocess && view == lastPreprocessView && proj == lastPreprocessProj &&
+		camPos == lastPreprocessCamPos && screenSize == lastPreprocessScreenSize)
+	{
+		return;
+	}
+	lastPreprocessView = view;
+	lastPreprocessProj = proj;
+	lastPreprocessCamPos = camPos;
+	lastPreprocessScreenSize = screenSize;
+	hasValidPreprocess = true;
+
 	computeShader.use();
-	computeShader.setMat4("uView", camera.getViewMatrix());
-	computeShader.setMat4("uProj", camera.getProjMatrix());
+	computeShader.setMat4("uView", view);
+	computeShader.setMat4("uProj", proj);
 	computeShader.setMat4("uModel", model);
-	computeShader.setVec3("uCamPos", camera.getPosition());
+	computeShader.setVec3("uCamPos", camPos);
 	computeShader.setVec2("uScreenSize", screenSize);
 	computeShader.setUInt("uCount", splatCount);
 
-	// Frustum planes are extracted in world space (no uModel), matching the
-	// worldPos test done per-splat in the compute shader.
-	auto frustumPlanes = extractFrustumPlanes(camera.getProjMatrix() * camera.getViewMatrix());
+	auto frustumPlanes = extractFrustumPlanes(proj * view);
 	computeShader.setVec4Array("uFrustum", frustumPlanes.data(), static_cast<unsigned int>(frustumPlanes.size()));
 
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, SPLAT_SSBO_BINDING, splatSSBO);

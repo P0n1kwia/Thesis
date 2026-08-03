@@ -30,4 +30,10 @@ private:
 	std::vector<uint32_t> indices;
 	std::vector<float> depths;
 	glm::mat4 model{glm::mat4(1,0,0,0, 0,-1,0,0, 0,0,-1,0, 0,0,0,1) };
+
+	glm::mat4 lastPreprocessView{};
+	glm::mat4 lastPreprocessProj{};
+	glm::vec3 lastPreprocessCamPos{};
+	glm::vec2 lastPreprocessScreenSize{};
+	bool hasValidPreprocess = false;
 };
