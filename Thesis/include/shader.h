@@ -19,6 +19,7 @@ public:
 	void setVec2(const std::string& name, const glm::vec2& vec);
 	void setMat3(const std::string& name, const glm::mat3& mat);
 	void setUInt(const std::string& name, unsigned int value);
+	void setVec4Array(const std::string& name, const glm::vec4* values, unsigned int count);
 
 	~Shader();
 	Shader(const Shader&) = delete;

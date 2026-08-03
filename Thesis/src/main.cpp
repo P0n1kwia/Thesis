@@ -131,12 +131,12 @@ int main()
     double prevTime = glfwGetTime();
     float  fps      = 0.f;
 
-    auto splats = loadSplats("resources/point_cloud.ply");
+    auto splats = loadSplats("resources/bonsai.ply");
     std::cout << "Loaded " << splats.size() << " splats\n";
 
     try
     {
-    Shader splatShader("shaders/splat_vert.glsl", "shaders/splat_frag.glsl");
+    Shader splatShader("shaders/splat.vert", "shaders/splat.frag");
     Shader computeShader(Shader::ComputeShader{}, "shaders/preprocessing.comp");
     SplatRenderer renderer;
     renderer.upload(splats);

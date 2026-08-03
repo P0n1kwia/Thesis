@@ -139,6 +139,11 @@ void Shader::setUInt(const std::string& name, unsigned int value)
 	glUniform1ui(getUniformLocation(name), value);
 }
 
+void Shader::setVec4Array(const std::string& name, const glm::vec4* M, unsigned int count)
+{
+	glUniform4fv(getUniformLocation(name), count, &M[0][0]);
+}
+
 Shader::~Shader()
 {
 	glDeleteProgram(ID);

@@ -3,6 +3,7 @@
 layout(local_size_x = 256) in;
 layout(std430, binding = 0) readonly buffer SplatsBuffer {float splatData[];};
 layout(std430, binding = 2) writeonly buffer PreprocBuffer {vec4 preprocBuffer[];};
+uniform vec4 uFrustum[6];
 
 uniform mat4 uView;
 uniform mat4 uProj;
@@ -22,15 +23,34 @@ const float SH_C2[5] = float[5](
 	0.5462742152960396
 );
 const uint SPLAT_STRIDE = 38u;
+
+bool insideFrustum(vec3 p, float radius)
+{
+	for(int k = 0; k<6; ++k)
+		if(dot(uFrustum[k].xyz, p) + uFrustum[k].w < -radius) return false;
+		return true;
+}
+
 void main()
 {
 	 uint i = gl_GlobalInvocationID.x;
-    if (i >= uCount) return;                
+    if (i >= uCount) return;
     uint base = i * SPLAT_STRIDE;
 	vec3  aPos        = vec3(splatData[base + 0u], splatData[base + 1u], splatData[base + 2u]);
-	vec3  aSh         = vec3(splatData[base + 3u], splatData[base + 4u], splatData[base + 5u]);
-	float aOpacity    = splatData[base + 6u];
 	vec3  aScale      = vec3(splatData[base + 7u], splatData[base + 8u], splatData[base + 9u]);
+	vec3  worldPos    = vec3(uModel * vec4(aPos, 1.0));
+	float radius      = 3.0 * max(aScale.x, max(aScale.y,aScale.z));
+	if(!insideFrustum(worldPos, radius))
+	{
+        preprocBuffer[3u*i + 0u] = vec4(0.0);
+        preprocBuffer[3u*i + 1u] = vec4(0.0);
+        preprocBuffer[3u*i + 2u] = vec4(0.0);
+        return;
+	}
+	vec3  aSh         = vec3(splatData[base + 3u], splatData[base + 4u], splatData[base + 5u]);
+
+	float aOpacity    = splatData[base + 6u];
+
 	vec4  aQuaternion = vec4(splatData[base + 10u], splatData[base + 11u], splatData[base + 12u], splatData[base + 13u]);
 
 	vec3 c1			  = vec3(splatData[base + 14u], splatData[base+15u], splatData[base + 16u]);
@@ -42,7 +62,6 @@ void main()
 	vec3  c6          = vec3(splatData[base + 29u], splatData[base + 30u], splatData[base + 31u]);
 	vec3  c7          = vec3(splatData[base + 32u], splatData[base + 33u], splatData[base + 34u]);
 	vec3  c8          = vec3(splatData[base + 35u], splatData[base + 36u], splatData[base + 37u]);
-	vec3 worldPos = vec3(uModel * vec4(aPos, 1.0));
 	vec3 dir = normalize(worldPos - uCamPos);
 	float dx = dir.x, dy = dir.y, dz = dir.z;
 	float xx = dx * dx, yy = dy * dy, zz = dz * dz;

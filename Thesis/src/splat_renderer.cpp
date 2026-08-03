@@ -2,6 +2,7 @@
 #include <glad/gl.h>
 #include <algorithm>
 #include <numeric>
+#include <utils.h>
 
 namespace
 {
@@ -75,6 +76,11 @@ void SplatRenderer::preprocess(Shader& computeShader, Camera& camera, const glm:
 	computeShader.setVec3("uCamPos", camera.getPosition());
 	computeShader.setVec2("uScreenSize", screenSize);
 	computeShader.setUInt("uCount", splatCount);
+
+	// Frustum planes are extracted in world space (no uModel), matching the
+	// worldPos test done per-splat in the compute shader.
+	auto frustumPlanes = extractFrustumPlanes(camera.getProjMatrix() * camera.getViewMatrix());
+	computeShader.setVec4Array("uFrustum", frustumPlanes.data(), static_cast<unsigned int>(frustumPlanes.size()));
 
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, SPLAT_SSBO_BINDING, splatSSBO);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, PREPROC_SSBO_BINDING, preprocSSBO);
