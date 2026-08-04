@@ -11,6 +11,8 @@ out vec3 vSh;
 out float vOpacity;
 out flat vec2 vCenterPos;
 out flat mat2 vICov2D;
+out flat float vDepth;
+out flat uint vSplatId;
 
 void main()
 {
@@ -26,9 +28,11 @@ void main()
     if (extent.x <= 0.0) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
 
     vCenterPos = center;
-    vICov2D    = mat2(p1.x, p1.y, p1.y, p1.z);  
+    vICov2D    = mat2(p1.x, p1.y, p1.y, p1.z);
     vSh        = p2.rgb;
     vOpacity   = p2.a;
+    vDepth     = p1.w;
+    vSplatId   = id;
 
     vec2 px  = center + aQuadPos.xy * extent;
     vec2 ndc = px / uScreenSize * 2.0 - 1.0;

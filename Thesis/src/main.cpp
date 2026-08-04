@@ -50,6 +50,8 @@ struct AppState {
     std::vector<CameraPreset> presets;
     int selectedPreset = -1;
     char presetNameBuf[128] = "";
+
+    int debugMode = 0; // 0=RGB 1=Depth 2=Alpha 3=Overdraw 4=Ellipse outline 5=Splat ID
 };
 
 static bool hasPlyExtension(const std::string& path)
@@ -288,6 +290,14 @@ int main()
             }
             if (!hasSelection) ImGui::EndDisabled();
         }
+        ImGui::Separator();
+        if (ImGui::CollapsingHeader("View", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            static const char* debugModeNames[] = {
+                "RGB", "Depth", "Alpha", "Overdraw", "Ellipse outline", "Splat ID"
+            };
+            ImGui::Combo("Debug mode", &state.debugMode, debugModeNames, IM_ARRAYSIZE(debugModeNames));
+        }
         ImGui::End();
 
         ImGui::Render();
@@ -308,6 +318,14 @@ int main()
         }
         splatShader.use();
         splatShader.setVec2("uScreenSize", glm::vec2(w, h));
+        splatShader.setInt("uDebugMode", state.debugMode);
+        CameraConfig camCfg = camera.getConfig();
+        splatShader.setFloat("uNear", camCfg.nearPlane);
+        splatShader.setFloat("uFar", camCfg.farPlane);
+        if (state.debugMode == 3)
+            glBlendFunc(GL_ONE, GL_ONE);
+        else
+            glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         renderer.draw(splatShader, camera,glm::vec2(w,h));
 
         if (state.screenshotRequested)
