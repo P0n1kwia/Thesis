@@ -12,6 +12,7 @@ target_link_libraries(Thesis PRIVATE
     imgui_lib
     happly_lib
     stb_lib
+    nlohmann_json::nlohmann_json
 )
 
 set_target_properties(Thesis PROPERTIES

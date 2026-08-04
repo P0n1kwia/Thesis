@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <cctype>
+#include <vector>
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -14,6 +15,7 @@
 #include <load_splat.h>
 #include <splat_renderer.h>
 #include <screenshot.h>
+#include <camera_presets.h>
 
 
 #ifdef _WIN32
@@ -43,6 +45,11 @@ struct AppState {
 
     bool screenshotRequested = false;
     std::string lastScreenshotPath;
+
+    std::string presetsPath = "camera_presets.json";
+    std::vector<CameraPreset> presets;
+    int selectedPreset = -1;
+    char presetNameBuf[128] = "";
 };
 
 static bool hasPlyExtension(const std::string& path)
@@ -194,6 +201,7 @@ int main()
     Shader computeShader(Shader::ComputeShader{}, "shaders/preprocessing.comp");
     SplatRenderer renderer;
     state.renderer = &renderer;
+    state.presets = loadPresets(state.presetsPath);
     if (loadSceneFromPath(state, "resources/bonsai.ply"))
         std::cout << "Loaded " << state.splatCount << " splats\n";
     else
@@ -237,6 +245,49 @@ int main()
         }
         if (ImGui::IsKeyPressed(ImGuiKey_F2, false))
             state.screenshotRequested = true;
+        ImGui::Separator();
+        if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::InputText("Name", state.presetNameBuf, IM_ARRAYSIZE(state.presetNameBuf));
+            ImGui::SameLine();
+            if (ImGui::Button("Save"))
+            {
+                std::string name(state.presetNameBuf);
+                if (!name.empty())
+                {
+                    auto it = std::find_if(state.presets.begin(), state.presets.end(),
+                        [&](const CameraPreset& p) { return p.name == name; });
+                    if (it != state.presets.end())
+                        it->config = camera.getConfig();
+                    else
+                        state.presets.push_back({ name, camera.getConfig() });
+                    savePresets(state.presetsPath, state.presets);
+                }
+            }
+
+            ImGui::BeginChild("PresetList", ImVec2(0, 100), true);
+            for (int i = 0; i < static_cast<int>(state.presets.size()); ++i)
+            {
+                bool isSelected = (state.selectedPreset == i);
+                if (ImGui::Selectable(state.presets[i].name.c_str(), isSelected))
+                    state.selectedPreset = i;
+            }
+            ImGui::EndChild();
+
+            bool hasSelection = state.selectedPreset >= 0 &&
+                state.selectedPreset < static_cast<int>(state.presets.size());
+            if (!hasSelection) ImGui::BeginDisabled();
+            if (ImGui::Button("Load"))
+                camera.applyConfig(state.presets[state.selectedPreset].config);
+            ImGui::SameLine();
+            if (ImGui::Button("Delete"))
+            {
+                state.presets.erase(state.presets.begin() + state.selectedPreset);
+                savePresets(state.presetsPath, state.presets);
+                state.selectedPreset = -1;
+            }
+            if (!hasSelection) ImGui::EndDisabled();
+        }
         ImGui::End();
 
         ImGui::Render();
