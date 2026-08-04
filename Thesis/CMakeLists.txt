@@ -13,6 +13,7 @@ target_link_libraries(Thesis PRIVATE
     happly_lib
     stb_lib
     nlohmann_json::nlohmann_json
+    nfd
 )
 
 set_target_properties(Thesis PROPERTIES

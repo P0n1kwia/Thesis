@@ -69,7 +69,15 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 
-FetchContent_MakeAvailable(glfw glad glm imgui happly stb json)
+set(NFD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    nfd
+    GIT_REPOSITORY https://github.com/btzy/nativefiledialog-extended.git
+    GIT_TAG        v1.2.1
+    GIT_SHALLOW    TRUE
+)
+
+FetchContent_MakeAvailable(glfw glad glm imgui happly stb json nfd)
 
 # Generate an OpenGL 4.3 Core profile loader via glad2
 glad_add_library(glad_gl_43_core REPRODUCIBLE API gl:core=4.3)

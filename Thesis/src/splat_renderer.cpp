@@ -131,6 +131,17 @@ void SplatRenderer::preprocess(Shader& computeShader, Camera& camera, const glm:
 	}
 }
 
+size_t SplatRenderer::getEstimatedVramBytes() const
+{
+	size_t bytes = 0;
+	bytes += sizeof(Splat) * splatCount;         // splatSSBO
+	bytes += sizeof(uint32_t) * splatCount;       // indexSSBO
+	bytes += sizeof(glm::vec4) * 3 * splatCount;  // preprocSSBO
+	bytes += sizeof(GLuint);                      // visibleCountSSBO
+	bytes += sizeof(uint32_t) * splatCount;       // visibleIndexSSBO
+	return bytes;
+}
+
 SplatRenderer::~SplatRenderer()
 {
 	glDeleteVertexArrays(1, &VAO);

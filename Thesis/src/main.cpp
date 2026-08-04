@@ -16,6 +16,7 @@
 #include <splat_renderer.h>
 #include <screenshot.h>
 #include <camera_presets.h>
+#include <nfd.hpp>
 
 
 #ifdef _WIN32
@@ -145,7 +146,8 @@ static void dropCB(GLFWwindow* w, int count, const char** paths)
 
 int main()
 {
-    
+    NFD::Guard nfdGuard;
+
     glfwSetErrorCallback(errorCB);
     if (!glfwInit()) return 1;
 
@@ -239,7 +241,18 @@ int main()
         {
             ImGui::Text("File: %s", state.currentSceneName.empty() ? "(none)" : state.currentSceneName.c_str());
             ImGui::Text("Splats: %zu", state.splatCount);
+            ImGui::Text("VRAM (scene data): %.1f MB", renderer.getEstimatedVramBytes() / (1024.0 * 1024.0));
             ImGui::TextWrapped("Drop a .ply file onto the window to load it.");
+            if (ImGui::Button("Load..."))
+            {
+                NFD::UniquePathU8 outPath;
+                nfdu8filteritem_t filterItem[1] = { { "PLY files", "ply" } };
+                nfdresult_t nfdResult = NFD::OpenDialog(outPath, filterItem, 1);
+                if (nfdResult == NFD_OKAY)
+                    loadSceneFromPath(state, outPath.get());
+                else if (nfdResult == NFD_ERROR)
+                    state.lastLoadError = std::string("File dialog error: ") + NFD::GetError();
+            }
             if (!state.lastLoadError.empty())
                 ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.2f, 1.0f), "%s", state.lastLoadError.c_str());
         }
