@@ -7,8 +7,9 @@ class SplatRenderer
 {
 public:
 	void upload(const std::vector<Splat>& splats);
-	void draw(Shader& shader,  Camera& camera);
+	void draw(Shader& shader,  Camera& camera, const glm::vec2& screenSize);
 	void sort(Camera& camera);
+	void preprocess(Shader& computeShader, Camera& camera, const glm::vec2& screenSize);
 
 	~SplatRenderer();
 	SplatRenderer() = default;
@@ -23,8 +24,20 @@ private:
 	unsigned int quadVBO = 0;
 	unsigned int splatSSBO = 0;
 	unsigned int indexSSBO = 0;
+	unsigned int preprocSSBO = 0;
+	unsigned int visibleCountSSBO = 0;
+	unsigned int visibleIndexSSBO = 0;
+	unsigned int splatCount = 0;
 	std::vector<Splat> splatsVector;
-	std::vector<uint32_t> indices;
 	std::vector<float> depths;
 	glm::mat4 model{glm::mat4(1,0,0,0, 0,-1,0,0, 0,0,-1,0, 0,0,0,1) };
+
+	glm::mat4 lastPreprocessView{};
+	glm::mat4 lastPreprocessProj{};
+	glm::vec3 lastPreprocessCamPos{};
+	glm::vec2 lastPreprocessScreenSize{};
+	bool hasValidPreprocess = false;
+
+	std::vector<uint32_t> visibleIndices;
+	uint32_t drawCount = 0;
 };

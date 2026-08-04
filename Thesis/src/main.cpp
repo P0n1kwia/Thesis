@@ -131,13 +131,13 @@ int main()
     double prevTime = glfwGetTime();
     float  fps      = 0.f;
 
-    auto splats = loadSplats("resources/point_cloud.ply");
+    auto splats = loadSplats("resources/bonsai.ply");
     std::cout << "Loaded " << splats.size() << " splats\n";
 
     try
     {
-    Shader splatShader("shaders/splat_vert.glsl", "shaders/splat_frag.glsl");
-
+    Shader splatShader("shaders/splat.vert", "shaders/splat.frag");
+    Shader computeShader(Shader::ComputeShader{}, "shaders/preprocessing.comp");
     SplatRenderer renderer;
     renderer.upload(splats);
     splatShader.use();
@@ -173,11 +173,14 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         splatShader.use();
+        renderer.preprocess(computeShader, camera, glm::vec2(w, h));
         if (camera.needsSort()) {
             renderer.sort(camera);
             camera.onSortComplete();
         }
-        renderer.draw(splatShader, camera);
+        splatShader.use();
+        splatShader.setVec2("uScreenSize", glm::vec2(w, h));
+        renderer.draw(splatShader, camera,glm::vec2(w,h));
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);

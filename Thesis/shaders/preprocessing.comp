@@ -1,20 +1,19 @@
 #version 430 core
 
-layout (location = 5) in vec3 aQuadPos;
-
-layout(std430,binding =0) readonly buffer SplatsBuffer{float splatData[];};
-layout(std430, binding=1) readonly buffer IndexBuffer{int splatIndex[];};
+layout(local_size_x = 256) in;
+layout(std430, binding = 0) readonly buffer SplatsBuffer {float splatData[];};
+layout(std430, binding = 2) writeonly buffer PreprocBuffer {vec4 preprocBuffer[];};
+layout(std430, binding = 3) buffer VisibleCountBuffer {uint visibleCount;};
+layout(std430, binding = 4) writeonly buffer VisibleIndexBuffer {uint visibleIndices[];};
+uniform vec4 uFrustum[6];
 
 uniform mat4 uView;
 uniform mat4 uProj;
 uniform vec2 uScreenSize;
 uniform mat4 uModel;
 uniform vec3 uCamPos;
+uniform uint uCount;
 
-out vec3 vSh;
-out float vOpacity;
-out flat vec2 vCenterPos;
-out flat mat2 vICov2D; //symetric so we need a,b,c [a,b, c]
 
 const float SH_C0 = 0.28209479177387814;
 const float SH_C1 = 0.4886025119029199;
@@ -26,27 +25,45 @@ const float SH_C2[5] = float[5](
 	0.5462742152960396
 );
 const uint SPLAT_STRIDE = 38u;
+
+const float MIN_OPACITY = 0.0039;
+
+bool insideFrustum(vec3 p, float radius)
+{
+	for(int k = 0; k<6; ++k)
+		if(dot(uFrustum[k].xyz, p) + uFrustum[k].w < -radius) return false;
+		return true;
+}
+
 void main()
 {
-	uint id = splatIndex[gl_InstanceID];
-	uint base  = id * SPLAT_STRIDE;
+	uint i = gl_GlobalInvocationID.x;
+    if (i >= uCount) return;
+    uint base = i * SPLAT_STRIDE;
 	vec3  aPos        = vec3(splatData[base + 0u], splatData[base + 1u], splatData[base + 2u]);
-	vec3  aSh         = vec3(splatData[base + 3u], splatData[base + 4u], splatData[base + 5u]);
-	float aOpacity    = splatData[base + 6u];
 	vec3  aScale      = vec3(splatData[base + 7u], splatData[base + 8u], splatData[base + 9u]);
+	float aOpacity    = splatData[base + 6u];
+	vec3  worldPos    = vec3(uModel * vec4(aPos, 1.0));
+	float radius      = 3.0 * max(aScale.x, max(aScale.y,aScale.z));
+	if(aOpacity < MIN_OPACITY || !insideFrustum(worldPos, radius))
+	{
+        preprocBuffer[3u*i + 0u] = vec4(0.0);
+        preprocBuffer[3u*i + 1u] = vec4(0.0);
+        preprocBuffer[3u*i + 2u] = vec4(0.0);
+        return;
+	}
+	vec3  aSh         = vec3(splatData[base + 3u], splatData[base + 4u], splatData[base + 5u]);
 	vec4  aQuaternion = vec4(splatData[base + 10u], splatData[base + 11u], splatData[base + 12u], splatData[base + 13u]);
 
-	vec3 c1 =		  vec3(splatData[base + 14u], splatData[base+15u], splatData[base + 16u]);
-	vec3 c2 =		  vec3(splatData[base + 17u], splatData[base+18u], splatData[base + 19u]);
-	vec3 c3 =		  vec3(splatData[base + 20u], splatData[base+21u], splatData[base + 22u]);
+	vec3 c1			  = vec3(splatData[base + 14u], splatData[base+15u], splatData[base + 16u]);
+	vec3 c2		      = vec3(splatData[base + 17u], splatData[base+18u], splatData[base + 19u]);
+	vec3 c3			  = vec3(splatData[base + 20u], splatData[base+21u], splatData[base + 22u]);
 
 	vec3  c4          = vec3(splatData[base + 23u], splatData[base + 24u], splatData[base + 25u]);
 	vec3  c5          = vec3(splatData[base + 26u], splatData[base + 27u], splatData[base + 28u]);
 	vec3  c6          = vec3(splatData[base + 29u], splatData[base + 30u], splatData[base + 31u]);
 	vec3  c7          = vec3(splatData[base + 32u], splatData[base + 33u], splatData[base + 34u]);
 	vec3  c8          = vec3(splatData[base + 35u], splatData[base + 36u], splatData[base + 37u]);
-
-	vec3 worldPos = vec3(uModel * vec4(aPos, 1.0));
 	vec3 dir = normalize(worldPos - uCamPos);
 	float dx = dir.x, dy = dir.y, dz = dir.z;
 	float xx = dx * dx, yy = dy * dy, zz = dz * dz;
@@ -58,9 +75,7 @@ void main()
 	           + SH_C2[2] * (2.0 * zz - xx - yy) * c6
 	           + SH_C2[3] * xz * c7
 	           + SH_C2[4] * (xx - yy) * c8;
-	vSh = color + 0.5;
-	vOpacity = aOpacity;
-
+	color += 0.5f;
 	mat3 S = mat3(
     vec3(aScale.x, 0.0, 0.0),
     vec3(0.0, aScale.y, 0.0),
@@ -79,13 +94,19 @@ void main()
 	mat3 M = R * S;
 	mat3 Mt = transpose(M);
 	mat3 Cov = M*Mt;
+
 	mat4 MV = uView * uModel;
 	vec4 t = MV * vec4(aPos,1.0);
 	float fx = uProj[0].x * uScreenSize.x * 0.5; 
 	float fy = uProj[1].y * uScreenSize.y * 0.5;
-
 	float tz = -t.z;
-	if (tz < 0.2) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
+	if(tz < 0.2)
+	{
+        preprocBuffer[3u*i + 0u] = vec4(0.0);
+        preprocBuffer[3u*i + 1u] = vec4(0.0);
+        preprocBuffer[3u*i + 2u] = vec4(0.0);
+        return;
+	}
 	float limx = 1.3 * (uScreenSize.x * 0.5) / fx;
 	float limy = 1.3 * (uScreenSize.y * 0.5) / fy;
 	float tx = clamp(t.x / tz, -limx, limx) * tz;
@@ -103,20 +124,22 @@ void main()
 	);
 	D2[0][0] += 0.3;
 	D2[1][1] += 0.3;
-
 	const float MAX_SPLAT_RADIUS_PX = 1024.0;
-	vec2 extent = min(vec2(
-		ceil(3.0 * sqrt(max(0.000001, D2[0][0]))),
-		ceil(3.0 * sqrt(max(0.000001, D2[1][1])))
-	), vec2(MAX_SPLAT_RADIUS_PX));
+	vec2 extent = min(vec2(ceil(3.0 * sqrt(max(1e-6, D2[0][0]))),
+                           ceil(3.0 * sqrt(max(1e-6, D2[1][1])))),
+						   vec2(MAX_SPLAT_RADIUS_PX));
 
-	vec4 clipPos = uProj * t;
-	vCenterPos = vec2((clipPos.xyz/clipPos.w) * 0.5 + 0.5) * uScreenSize;
+    vec4 clipPos = uProj * t;
+    vec2 center  = ((clipPos.xy / clipPos.w) * 0.5 + 0.5) * uScreenSize;
+	float a = D2[0][0], b = D2[0][1], c = D2[1][1];
+    float det = a * c - b * b;
+    float invDet = 1.0 / det;      
+    vec3 invCov = vec3( c * invDet, -b * invDet, a * invDet );
 
-	clipPos.xy += aQuadPos.xy * extent * vec2(2.0) / uScreenSize * clipPos.w;
+	uint slot = atomicAdd(visibleCount, 1u);
+	visibleIndices[slot] = i;
 
-
-	vICov2D = inverse(D2);
-
-	gl_Position = clipPos;
+	preprocBuffer[3u*i + 0u] = vec4(center, extent);
+    preprocBuffer[3u*i + 1u] = vec4(invCov, tz);
+    preprocBuffer[3u*i + 2u] = vec4(color, aOpacity);
 }
