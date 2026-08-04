@@ -1,4 +1,7 @@
 #include <iostream>
+#include <filesystem>
+#include <algorithm>
+#include <cctype>
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -27,11 +30,48 @@ const unsigned int WINDOW_HEIGHT = 720;
 const unsigned int WINDOW_WIDTH = 1280;
 struct AppState {
     Camera* camera = nullptr;
+    SplatRenderer* renderer = nullptr;
     bool leftDown  = false;
     bool rightDown = false;
     double lastX = 0.0, lastY = 0.0;
     int fbHeight = WINDOW_HEIGHT;
+
+    std::string currentSceneName;
+    size_t splatCount = 0;
+    std::string lastLoadError;
 };
+
+static bool hasPlyExtension(const std::string& path)
+{
+    if (path.size() < 4) return false;
+    std::string ext = path.substr(path.size() - 4);
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext == ".ply";
+}
+
+static bool loadSceneFromPath(AppState& state, const std::string& path)
+{
+    if (!hasPlyExtension(path))
+    {
+        state.lastLoadError = "Not a .ply file: " + path;
+        return false;
+    }
+    try
+    {
+        auto splats = loadSplats(path);
+        state.renderer->upload(splats);
+        state.currentSceneName = std::filesystem::path(path).filename().string();
+        state.splatCount = splats.size();
+        state.lastLoadError.clear();
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        state.lastLoadError = "Failed to load '" + path + "': " + e.what();
+        return false;
+    }
+}
 
 static void errorCB(int err, const char* desc)
 {
@@ -73,6 +113,18 @@ static void fbSizeCB(GLFWwindow* w, int width, int height)
     auto* s = static_cast<AppState*>(glfwGetWindowUserPointer(w));
     if (s->camera) s->camera->onViewportResize(width, height);
     s->fbHeight = height;
+}
+
+static void dropCB(GLFWwindow* w, int count, const char** paths)
+{
+    if (count < 1) return;
+    auto* s = static_cast<AppState*>(glfwGetWindowUserPointer(w));
+    bool ok = loadSceneFromPath(*s, paths[0]);
+    if (count > 1)
+    {
+        std::string note = "Dropped " + std::to_string(count) + " files; only the first was loaded.";
+        s->lastLoadError = ok ? note : (s->lastLoadError + " | " + note);
+    }
 }
 
 int main()
@@ -117,6 +169,7 @@ int main()
     glfwSetCursorPosCallback(window, cursorCB);
     glfwSetScrollCallback(window, scrollCB);
     glfwSetFramebufferSizeCallback(window, fbSizeCB);
+    glfwSetDropCallback(window, dropCB);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -131,15 +184,16 @@ int main()
     double prevTime = glfwGetTime();
     float  fps      = 0.f;
 
-    auto splats = loadSplats("resources/bonsai.ply");
-    std::cout << "Loaded " << splats.size() << " splats\n";
-
     try
     {
     Shader splatShader("shaders/splat.vert", "shaders/splat.frag");
     Shader computeShader(Shader::ComputeShader{}, "shaders/preprocessing.comp");
     SplatRenderer renderer;
-    renderer.upload(splats);
+    state.renderer = &renderer;
+    if (loadSceneFromPath(state, "resources/bonsai.ply"))
+        std::cout << "Loaded " << state.splatCount << " splats\n";
+    else
+        std::cerr << "Startup load failed: " << state.lastLoadError << "\n";
     splatShader.use();
     splatShader.setVec2("uScreenSize", glm::vec2(WINDOW_WIDTH, WINDOW_HEIGHT)); 
 
@@ -160,6 +214,15 @@ int main()
         ImGui::Text("FPS: %.1f  (%.2f ms)", fps, delta * 1000.f);
         ImGui::Separator();
         ImGui::Text("Left-drag: orbit  |  Right-drag: pan  |  Scroll: zoom");
+        ImGui::Separator();
+        if (ImGui::CollapsingHeader("Scene", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::Text("File: %s", state.currentSceneName.empty() ? "(none)" : state.currentSceneName.c_str());
+            ImGui::Text("Splats: %zu", state.splatCount);
+            ImGui::TextWrapped("Drop a .ply file onto the window to load it.");
+            if (!state.lastLoadError.empty())
+                ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.2f, 1.0f), "%s", state.lastLoadError.c_str());
+        }
         ImGui::End();
 
         ImGui::Render();
