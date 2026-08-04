@@ -51,7 +51,10 @@ struct AppState {
     int selectedPreset = -1;
     char presetNameBuf[128] = "";
 
-    int debugMode = 0; // 0=RGB 1=Depth 2=Alpha 3=Overdraw 4=Ellipse outline 5=Splat ID
+    // 0=RGB 1=Depth 2=Alpha 3=Overdraw 4=Ellipse outline 5=Splat ID
+    bool splitScreenEnabled = false;
+    int debugModeLeft = 0;
+    int debugModeRight = 0;
 };
 
 static bool hasPlyExtension(const std::string& path)
@@ -209,7 +212,7 @@ int main()
     else
         std::cerr << "Startup load failed: " << state.lastLoadError << "\n";
     splatShader.use();
-    splatShader.setVec2("uScreenSize", glm::vec2(WINDOW_WIDTH, WINDOW_HEIGHT)); 
+    splatShader.setVec2("uScreenSize", glm::vec2(WINDOW_WIDTH, WINDOW_HEIGHT));
 
     while (!glfwWindowShouldClose(window))
     {
@@ -219,6 +222,9 @@ int main()
         fps      = 1.f / delta;
 
         glfwPollEvents();
+
+        int w, h;
+        glfwGetFramebufferSize(window, &w, &h);
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -296,14 +302,24 @@ int main()
             static const char* debugModeNames[] = {
                 "RGB", "Depth", "Alpha", "Overdraw", "Ellipse outline", "Splat ID"
             };
-            ImGui::Combo("Debug mode", &state.debugMode, debugModeNames, IM_ARRAYSIZE(debugModeNames));
+            ImGui::Checkbox("Split screen", &state.splitScreenEnabled);
+            ImGui::Combo(state.splitScreenEnabled ? "Left" : "Debug mode",
+                &state.debugModeLeft, debugModeNames, IM_ARRAYSIZE(debugModeNames));
+            if (state.splitScreenEnabled)
+                ImGui::Combo("Right", &state.debugModeRight, debugModeNames, IM_ARRAYSIZE(debugModeNames));
         }
         ImGui::End();
 
+        if (state.splitScreenEnabled)
+        {
+            float splitX = static_cast<float>(w / 2);
+            ImGui::GetForegroundDrawList()->AddLine(
+                ImVec2(splitX, 0.0f), ImVec2(splitX, static_cast<float>(h)),
+                IM_COL32(255, 255, 255, 180), 1.5f);
+        }
+
         ImGui::Render();
 
-        int w, h; 
-        glfwGetFramebufferSize(window, &w, &h);
         glViewport(0, 0, w, h);
         splatShader.use();
         splatShader.setVec2("uScreenSize", glm::vec2(w, h));
@@ -316,17 +332,37 @@ int main()
             renderer.sort(camera);
             camera.onSortComplete();
         }
-        splatShader.use();
-        splatShader.setVec2("uScreenSize", glm::vec2(w, h));
-        splatShader.setInt("uDebugMode", state.debugMode);
+
         CameraConfig camCfg = camera.getConfig();
-        splatShader.setFloat("uNear", camCfg.nearPlane);
-        splatShader.setFloat("uFar", camCfg.farPlane);
-        if (state.debugMode == 3)
-            glBlendFunc(GL_ONE, GL_ONE);
+        auto drawView = [&](int viewportX, int viewportW, int debugMode)
+        {
+            glViewport(viewportX, 0, viewportW, h);
+            splatShader.use();
+            splatShader.setVec2("uScreenSize", glm::vec2(w, h));
+            splatShader.setInt("uDebugMode", debugMode);
+            splatShader.setFloat("uNear", camCfg.nearPlane);
+            splatShader.setFloat("uFar", camCfg.radius * 2.5f);
+            splatShader.setFloat("uViewportOffsetX", static_cast<float>(viewportX));
+            splatShader.setFloat("uViewportScale", static_cast<float>(viewportW) / static_cast<float>(w));
+            if (debugMode == 3)
+                glBlendFunc(GL_ONE, GL_ONE);
+            else
+                glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+            renderer.draw(splatShader, camera, glm::vec2(w, h));
+        };
+
+        if (state.splitScreenEnabled)
+        {
+            int leftW = w / 2;
+            int rightW = w - leftW;
+            drawView(0, leftW, state.debugModeLeft);
+            drawView(leftW, rightW, state.debugModeRight);
+        }
         else
-            glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-        renderer.draw(splatShader, camera,glm::vec2(w,h));
+        {
+            drawView(0, w, state.debugModeLeft);
+        }
+        glViewport(0, 0, w, h);
 
         if (state.screenshotRequested)
         {

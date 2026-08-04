@@ -10,6 +10,8 @@ in flat uint vSplatId;
 uniform int uDebugMode; //0=RGB 1=Depth 2=Alpha 3=Overdraw 4=Ellipse outline 5=Splat ID
 uniform float uNear;
 uniform float uFar;
+uniform float uViewportOffsetX; // current glViewport x, in framebuffer pixels
+uniform float uViewportScale;   // current viewport width / full uScreenSize.x
 
 out vec4 fragColor;
 
@@ -23,7 +25,9 @@ vec3 idToColor(uint id)
 
 void main()
 {
-    vec2 d = gl_FragCoord.xy - vCenterPos;
+
+    vec2 fragFullFrame = vec2((gl_FragCoord.x - uViewportOffsetX) / uViewportScale, gl_FragCoord.y);
+    vec2 d = fragFullFrame - vCenterPos;
     float power = -0.5 * (d.x * d.x * vICov2D[0][0] + 2.0 * d.x * d.y * vICov2D[0][1] + d.y * d.y * vICov2D[1][1]);
     if (power > 0.0) discard;
     float alpha = min(0.99, vOpacity * exp(power));
