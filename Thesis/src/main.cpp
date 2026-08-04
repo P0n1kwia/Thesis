@@ -13,6 +13,7 @@
 #include <camera.h>
 #include <load_splat.h>
 #include <splat_renderer.h>
+#include <screenshot.h>
 
 
 #ifdef _WIN32
@@ -39,6 +40,9 @@ struct AppState {
     std::string currentSceneName;
     size_t splatCount = 0;
     std::string lastLoadError;
+
+    bool screenshotRequested = false;
+    std::string lastScreenshotPath;
 };
 
 static bool hasPlyExtension(const std::string& path)
@@ -223,6 +227,16 @@ int main()
             if (!state.lastLoadError.empty())
                 ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.2f, 1.0f), "%s", state.lastLoadError.c_str());
         }
+        ImGui::Separator();
+        if (ImGui::CollapsingHeader("Capture", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            if (ImGui::Button("Screenshot (F2)"))
+                state.screenshotRequested = true;
+            if (!state.lastScreenshotPath.empty())
+                ImGui::TextWrapped("Saved: %s", state.lastScreenshotPath.c_str());
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_F2, false))
+            state.screenshotRequested = true;
         ImGui::End();
 
         ImGui::Render();
@@ -244,6 +258,13 @@ int main()
         splatShader.use();
         splatShader.setVec2("uScreenSize", glm::vec2(w, h));
         renderer.draw(splatShader, camera,glm::vec2(w,h));
+
+        if (state.screenshotRequested)
+        {
+            std::string path = makeScreenshotPath();
+            state.lastScreenshotPath = saveScreenshotPNG(path, w, h) ? path : "Screenshot failed";
+            state.screenshotRequested = false;
+        }
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);
