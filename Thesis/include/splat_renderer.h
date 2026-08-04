@@ -11,6 +11,8 @@ public:
 	void sort(Camera& camera);
 	void preprocess(Shader& computeShader, Camera& camera, const glm::vec2& screenSize);
 	size_t getEstimatedVramBytes() const;
+	glm::vec3 getBboxCenter() const;
+	float getBoundingRadius() const;
 
 	~SplatRenderer();
 	SplatRenderer() = default;
@@ -29,6 +31,8 @@ private:
 	unsigned int visibleCountSSBO = 0;
 	unsigned int visibleIndexSSBO = 0;
 	unsigned int splatCount = 0;
+	glm::vec3 bboxMin{ 0.0f };
+	glm::vec3 bboxMax{ 0.0f };
 	std::vector<Splat> splatsVector;
 	std::vector<float> depths;
 	glm::mat4 model{glm::mat4(1,0,0,0, 0,-1,0,0, 0,0,-1,0, 0,0,0,1) };

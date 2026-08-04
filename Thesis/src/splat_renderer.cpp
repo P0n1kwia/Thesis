@@ -2,6 +2,7 @@
 #include <glad/gl.h>
 #include <algorithm>
 #include <execution>
+#include <limits>
 #include <utils.h>
 
 namespace
@@ -21,6 +22,19 @@ void SplatRenderer::upload(const std::vector<Splat>& splats)
 	visibleIndices.clear();
 	drawCount = 0;
 
+	bboxMin = glm::vec3(std::numeric_limits<float>::max());
+	bboxMax = glm::vec3(std::numeric_limits<float>::lowest());
+	for (const Splat& s : splatsVector)
+	{
+		glm::vec3 worldPos = glm::vec3(model * glm::vec4(s.position[0], s.position[1], s.position[2], 1.0f));
+		bboxMin = glm::min(bboxMin, worldPos);
+		bboxMax = glm::max(bboxMax, worldPos);
+	}
+	if (splatCount == 0)
+	{
+		bboxMin = glm::vec3(0.0f);
+		bboxMax = glm::vec3(0.0f);
+	}
 
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, splatSSBO);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Splat) * splatCount, splatsVector.data(), GL_STATIC_DRAW);
@@ -140,6 +154,16 @@ size_t SplatRenderer::getEstimatedVramBytes() const
 	bytes += sizeof(GLuint);                      // visibleCountSSBO
 	bytes += sizeof(uint32_t) * splatCount;       // visibleIndexSSBO
 	return bytes;
+}
+
+glm::vec3 SplatRenderer::getBboxCenter() const
+{
+	return (bboxMin + bboxMax) * 0.5f;
+}
+
+float SplatRenderer::getBoundingRadius() const
+{
+	return glm::length(bboxMax - bboxMin) * 0.5f;
 }
 
 SplatRenderer::~SplatRenderer()

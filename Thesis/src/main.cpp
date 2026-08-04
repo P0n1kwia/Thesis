@@ -78,6 +78,7 @@ static bool loadSceneFromPath(AppState& state, const std::string& path)
     {
         auto splats = loadSplats(path);
         state.renderer->upload(splats);
+        state.camera->frame(state.renderer->getBboxCenter(), state.renderer->getBoundingRadius());
         state.currentSceneName = std::filesystem::path(path).filename().string();
         state.splatCount = splats.size();
         state.lastLoadError.clear();
@@ -253,6 +254,8 @@ int main()
                 else if (nfdResult == NFD_ERROR)
                     state.lastLoadError = std::string("File dialog error: ") + NFD::GetError();
             }
+            if (ImGui::Button("Reset / fit to scene"))
+                camera.frame(renderer.getBboxCenter(), renderer.getBoundingRadius());
             if (!state.lastLoadError.empty())
                 ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.2f, 1.0f), "%s", state.lastLoadError.c_str());
         }
