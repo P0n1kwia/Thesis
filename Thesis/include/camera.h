@@ -34,8 +34,6 @@ public:
 
     CameraConfig getConfig() const;
     void applyConfig(const CameraConfig& cfg);
-    void frame(glm::vec3 center, float boundingRadius, float margin = 1.2f);
-
 
     bool needsSort() const;
     void onSortComplete();

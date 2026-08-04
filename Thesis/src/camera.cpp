@@ -102,14 +102,6 @@ void Camera::applyConfig(const CameraConfig& cfg)
 	dirty = true;
 }
 
-void Camera::frame(glm::vec3 center, float boundingRadius, float margin)
-{
-	target = center;
-	radius = boundingRadius / glm::sin(fovY * 0.5f) * margin;
-	if (radius < 0.1f) radius = 0.1f;
-	dirty = true;
-}
-
 bool Camera::needsSort() const
 {
 	return glm::distance(lastSortPos, getPosition()) > 0.002f * radius;
