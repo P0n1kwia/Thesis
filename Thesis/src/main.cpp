@@ -173,11 +173,11 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         splatShader.use();
+        renderer.preprocess(computeShader, camera, glm::vec2(w, h));
         if (camera.needsSort()) {
             renderer.sort(camera);
             camera.onSortComplete();
         }
-        renderer.preprocess(computeShader, camera, glm::vec2(w, h));
         splatShader.use();
         splatShader.setVec2("uScreenSize", glm::vec2(w, h));
         renderer.draw(splatShader, camera,glm::vec2(w,h));

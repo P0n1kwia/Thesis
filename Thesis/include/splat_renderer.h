@@ -25,9 +25,10 @@ private:
 	unsigned int splatSSBO = 0;
 	unsigned int indexSSBO = 0;
 	unsigned int preprocSSBO = 0;
+	unsigned int visibleCountSSBO = 0;
+	unsigned int visibleIndexSSBO = 0;
 	unsigned int splatCount = 0;
 	std::vector<Splat> splatsVector;
-	std::vector<uint32_t> indices;
 	std::vector<float> depths;
 	glm::mat4 model{glm::mat4(1,0,0,0, 0,-1,0,0, 0,0,-1,0, 0,0,0,1) };
 
@@ -36,4 +37,7 @@ private:
 	glm::vec3 lastPreprocessCamPos{};
 	glm::vec2 lastPreprocessScreenSize{};
 	bool hasValidPreprocess = false;
+
+	std::vector<uint32_t> visibleIndices;
+	uint32_t drawCount = 0;
 };

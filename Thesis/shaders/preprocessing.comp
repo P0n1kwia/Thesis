@@ -3,6 +3,8 @@
 layout(local_size_x = 256) in;
 layout(std430, binding = 0) readonly buffer SplatsBuffer {float splatData[];};
 layout(std430, binding = 2) writeonly buffer PreprocBuffer {vec4 preprocBuffer[];};
+layout(std430, binding = 3) buffer VisibleCountBuffer {uint visibleCount;};
+layout(std430, binding = 4) writeonly buffer VisibleIndexBuffer {uint visibleIndices[];};
 uniform vec4 uFrustum[6];
 
 uniform mat4 uView;
@@ -35,7 +37,7 @@ bool insideFrustum(vec3 p, float radius)
 
 void main()
 {
-	 uint i = gl_GlobalInvocationID.x;
+	uint i = gl_GlobalInvocationID.x;
     if (i >= uCount) return;
     uint base = i * SPLAT_STRIDE;
 	vec3  aPos        = vec3(splatData[base + 0u], splatData[base + 1u], splatData[base + 2u]);
@@ -51,7 +53,6 @@ void main()
         return;
 	}
 	vec3  aSh         = vec3(splatData[base + 3u], splatData[base + 4u], splatData[base + 5u]);
-
 	vec4  aQuaternion = vec4(splatData[base + 10u], splatData[base + 11u], splatData[base + 12u], splatData[base + 13u]);
 
 	vec3 c1			  = vec3(splatData[base + 14u], splatData[base+15u], splatData[base + 16u]);
@@ -133,8 +134,12 @@ void main()
 	float a = D2[0][0], b = D2[0][1], c = D2[1][1];
     float det = a * c - b * b;
     float invDet = 1.0 / det;      
-    vec3 invCov = vec3( c * invDet, -b * invDet, a * invDet );  
+    vec3 invCov = vec3( c * invDet, -b * invDet, a * invDet );
+
+	uint slot = atomicAdd(visibleCount, 1u);
+	visibleIndices[slot] = i;
+
 	preprocBuffer[3u*i + 0u] = vec4(center, extent);
-    preprocBuffer[3u*i + 1u] = vec4(invCov, tz);        
+    preprocBuffer[3u*i + 1u] = vec4(invCov, tz);
     preprocBuffer[3u*i + 2u] = vec4(color, aOpacity);
 }
