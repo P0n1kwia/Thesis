@@ -25,6 +25,9 @@ public:
 	size_t getEstimatedVramBytes() const;
 	uint32_t getSplatCount() const;
 	uint32_t getDrawCount() const;
+	const std::vector<Splat>& getSplats() const;
+	const std::vector<uint32_t>& getVisibleIndices() const;
+	std::vector<glm::vec2> fetchVisibleScreenExtents() const;
 
 	~SplatRenderer();
 	SplatRenderer() = default;

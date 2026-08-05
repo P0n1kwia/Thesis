@@ -158,6 +158,34 @@ uint32_t SplatRenderer::getDrawCount() const
 	return drawCount;
 }
 
+const std::vector<Splat>& SplatRenderer::getSplats() const
+{
+	return splatsVector;
+}
+
+const std::vector<uint32_t>& SplatRenderer::getVisibleIndices() const
+{
+	return visibleIndices;
+}
+
+std::vector<glm::vec2> SplatRenderer::fetchVisibleScreenExtents() const
+{
+	std::vector<glm::vec2> extents;
+	extents.reserve(visibleIndices.size());
+	if (visibleIndices.empty()) return extents;
+
+	std::vector<glm::vec4> preprocData(3 * static_cast<size_t>(splatCount));
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, preprocSSBO);
+	glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(glm::vec4) * preprocData.size(), preprocData.data());
+
+	for (uint32_t idx : visibleIndices)
+	{
+		const glm::vec4& centerExtent = preprocData[3u * idx];
+		extents.emplace_back(centerExtent.z, centerExtent.w);
+	}
+	return extents;
+}
+
 SplatRenderer::~SplatRenderer()
 {
 	glDeleteVertexArrays(1, &VAO);

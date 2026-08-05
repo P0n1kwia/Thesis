@@ -11,18 +11,21 @@
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#include <implot.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <shader.h>
 #include <camera.h>
 #include <load_splat.h>
 #include <splat_renderer.h>
+#include <gpu_timer.h>
 #include <screenshot.h>
 #include <camera_presets.h>
 #include <nfd.hpp>
 
 
 #ifdef _WIN32
+#define NOMINMAX
 #include <windows.h>
 
 extern "C" {
@@ -67,6 +70,9 @@ struct AppState {
     std::vector<float> fpsHistory = std::vector<float>(FPS_HISTORY_SIZE, 0.0f);
     int fpsHistoryIdx = 0;
     float sortTimeMs = 0.f;
+    float gpuTimeMs = 0.f;
+
+    std::vector<float> extentHistogramData;
 };
 
 static bool hasPlyExtension(const std::string& path)
@@ -202,6 +208,7 @@ int main()
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    ImPlot::CreateContext();
     ImGui::StyleColorsDark();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 430");
@@ -218,6 +225,7 @@ int main()
     Shader splatShader("shaders/splat.vert", "shaders/splat.frag");
     Shader computeShader(Shader::ComputeShader{}, "shaders/preprocessing.comp");
     SplatRenderer renderer;
+    GpuTimer gpuTimer;
     state.renderer = &renderer;
     state.presets = loadPresets(state.presetsPath);
     if (loadSceneFromPath(state, "resources/bonsai.ply"))
@@ -357,10 +365,61 @@ int main()
             ImGui::PlotLines("##FpsHistory", state.fpsHistory.data(), static_cast<int>(state.fpsHistory.size()),
                 state.fpsHistoryIdx, fpsOverlay, 0.0f, FLT_MAX, ImVec2(0, 60));
             ImGui::Text("Sort time: %.3f ms", state.sortTimeMs);
+            ImGui::Text("GPU time: %.3f ms", state.gpuTimeMs);
             ImGui::Separator();
             ImGui::Text("Splats loaded: %u", renderer.getSplatCount());
             ImGui::Text("Splats after culling: %u", renderer.getDrawCount());
             ImGui::Text("Splats drawn: %u", renderer.getDrawCount());
+
+            if (ImGui::TreeNode("Histograms"))
+            {
+                const auto& splats = renderer.getSplats();
+                const auto& visibleIndices = renderer.getVisibleIndices();
+
+                std::vector<float> visibleOpacities;
+                std::vector<float> visibleScales;
+                visibleOpacities.reserve(visibleIndices.size());
+                visibleScales.reserve(visibleIndices.size());
+                for (uint32_t idx : visibleIndices)
+                {
+                    const Splat& s = splats[idx];
+                    visibleOpacities.push_back(s.opacity);
+                    visibleScales.push_back(std::max({ s.scale[0], s.scale[1], s.scale[2] }));
+                }
+
+                ImVec2 plotSize(0, 120);
+                if (!visibleOpacities.empty() && ImPlot::BeginPlot("Opacity (visible splats)", plotSize))
+                {
+                    ImPlot::SetupAxes("opacity", "count");
+                    ImPlot::PlotHistogram("##opacity", visibleOpacities.data(), static_cast<int>(visibleOpacities.size()));
+                    ImPlot::EndPlot();
+                }
+                if (!visibleScales.empty() && ImPlot::BeginPlot("Scale (visible splats)", plotSize))
+                {
+                    ImPlot::SetupAxes("max(scale.xyz)", "count");
+                    ImPlot::PlotHistogram("##scale", visibleScales.data(), static_cast<int>(visibleScales.size()));
+                    ImPlot::EndPlot();
+                }
+
+                if (ImGui::Button("Refresh histogram"))
+                {
+                    auto extents = renderer.fetchVisibleScreenExtents();
+                    state.extentHistogramData.clear();
+                    state.extentHistogramData.reserve(extents.size());
+                    for (const glm::vec2& e : extents)
+                        state.extentHistogramData.push_back(std::max(e.x, e.y));
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("Screen extent (px, on-demand)");
+                if (!state.extentHistogramData.empty() && ImPlot::BeginPlot("Screen extent (last refresh)", plotSize))
+                {
+                    ImPlot::SetupAxes("extent [px]", "count");
+                    ImPlot::PlotHistogram("##extent", state.extentHistogramData.data(), static_cast<int>(state.extentHistogramData.size()));
+                    ImPlot::EndPlot();
+                }
+
+                ImGui::TreePop();
+            }
         }
         ImGui::End();
 
@@ -380,7 +439,12 @@ int main()
         glClearColor(0.12f, 0.12f, 0.12f, 1.f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        float gpuMs;
+        if (gpuTimer.tryGetResultMs(gpuMs))
+            state.gpuTimeMs = gpuMs;
+
         splatShader.use();
+        gpuTimer.begin();
         renderer.preprocess(computeShader, camera, glm::vec2(w, h), state.renderParams);
         if (camera.needsSort()) {
             auto sortStart = std::chrono::steady_clock::now();
@@ -419,6 +483,7 @@ int main()
         {
             drawView(0, w, state.debugModeLeft);
         }
+        gpuTimer.end();
         glViewport(0, 0, w, h);
 
         if (state.screenshotRequested)
@@ -438,6 +503,7 @@ int main()
     }
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
+    ImPlot::DestroyContext();
     ImGui::DestroyContext();
     glfwDestroyWindow(window);
     glfwTerminate();

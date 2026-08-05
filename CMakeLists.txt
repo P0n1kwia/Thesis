@@ -48,6 +48,12 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 FetchContent_Declare(
+    implot
+    GIT_REPOSITORY https://github.com/epezent/implot.git
+    GIT_TAG        v1.0
+    GIT_SHALLOW    TRUE
+)
+FetchContent_Declare(
     happly
     GIT_REPOSITORY https://github.com/nmwsharp/happly.git
     GIT_TAG        master
@@ -77,7 +83,7 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 
-FetchContent_MakeAvailable(glfw glad glm imgui happly stb json nfd)
+FetchContent_MakeAvailable(glfw glad glm imgui implot happly stb json nfd)
 
 # Generate an OpenGL 4.3 Core profile loader via glad2
 glad_add_library(glad_gl_43_core REPRODUCIBLE API gl:core=4.3)
@@ -96,6 +102,14 @@ target_include_directories(imgui_lib PUBLIC
     ${imgui_SOURCE_DIR}/backends
 )
 target_link_libraries(imgui_lib PUBLIC glfw)
+
+# ImPlot – compile as static library, built on top of Dear ImGui
+add_library(implot_lib STATIC
+    ${implot_SOURCE_DIR}/implot.cpp
+    ${implot_SOURCE_DIR}/implot_items.cpp
+)
+target_include_directories(implot_lib PUBLIC ${implot_SOURCE_DIR})
+target_link_libraries(implot_lib PUBLIC imgui_lib)
 
 # happly – header-only interface target
 add_library(happly_lib INTERFACE)
