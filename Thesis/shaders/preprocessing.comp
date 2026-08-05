@@ -18,6 +18,7 @@ uniform float uMinOpacity;
 uniform float uScaleMultiplier;
 uniform float uDilation;
 uniform float uMaxRadiusPx;
+uniform int uSHDegree;
 
 const float SH_C0 = 0.28209479177387814;
 const float SH_C1 = 0.4886025119029199;
@@ -70,13 +71,19 @@ void main()
 	float dx = dir.x, dy = dir.y, dz = dir.z;
 	float xx = dx * dx, yy = dy * dy, zz = dz * dz;
 	float xy = dx * dy, yz = dy * dz, xz = dx * dz;
-	vec3 color = SH_C0 * aSh
-	           + SH_C1 * (-dy * c1 + dz * c2 - dx * c3)
-	           + SH_C2[0] * xy * c4
-	           + SH_C2[1] * yz * c5
-	           + SH_C2[2] * (2.0 * zz - xx - yy) * c6
-	           + SH_C2[3] * xz * c7
-	           + SH_C2[4] * (xx - yy) * c8;
+	vec3 color = SH_C0 * aSh;
+	if (uSHDegree >= 1)
+	{
+		color += SH_C1 * (-dy * c1 + dz * c2 - dx * c3);
+	}
+	if (uSHDegree >= 2)
+	{
+		color += SH_C2[0] * xy * c4
+		       + SH_C2[1] * yz * c5
+		       + SH_C2[2] * (2.0 * zz - xx - yy) * c6
+		       + SH_C2[3] * xz * c7
+		       + SH_C2[4] * (xx - yy) * c8;
+	}
 	color += 0.5f;
 	vec3 scaledAScale = aScale * uScaleMultiplier;
 	mat3 S = mat3(

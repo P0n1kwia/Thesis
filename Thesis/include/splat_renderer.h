@@ -10,6 +10,7 @@ struct RenderParams
 	float scaleMultiplier = 1.0f;
 	float dilation = 0.3f;
 	float maxRadiusPx = 1024.0f;
+	int shDegree = 2;
 
 	bool operator==(const RenderParams&) const = default;
 };

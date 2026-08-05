@@ -108,6 +108,7 @@ void SplatRenderer::preprocess(Shader& computeShader, Camera& camera, const glm:
 	computeShader.setFloat("uScaleMultiplier", params.scaleMultiplier);
 	computeShader.setFloat("uDilation", params.dilation);
 	computeShader.setFloat("uMaxRadiusPx", params.maxRadiusPx);
+	computeShader.setInt("uSHDegree", params.shDegree);
 
 	auto frustumPlanes = extractFrustumPlanes(proj * view);
 	computeShader.setVec4Array("uFrustum", frustumPlanes.data(), static_cast<unsigned int>(frustumPlanes.size()));

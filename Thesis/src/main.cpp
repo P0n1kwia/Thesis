@@ -318,6 +318,13 @@ int main()
             ImGui::SliderFloat("Scale multiplier", &state.renderParams.scaleMultiplier, 0.1f, 3.0f);
             ImGui::SliderFloat("Dilation", &state.renderParams.dilation, 0.0f, 2.0f);
             ImGui::SliderFloat("Max splat radius (px)", &state.renderParams.maxRadiusPx, 1.0f, 1024.0f);
+            ImGui::SliderInt("SH degree", &state.renderParams.shDegree, 0, 2);
+            ImGui::SameLine();
+            ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemHovered())
+            {
+                ImGui::SetTooltip("0 = DC only, 1 = +linear, 2 = +quadratic (full).\nDegree 3 not yet implemented.");
+            }
         }
         ImGui::Separator();
         if (ImGui::CollapsingHeader("View", ImGuiTreeNodeFlags_DefaultOpen))
