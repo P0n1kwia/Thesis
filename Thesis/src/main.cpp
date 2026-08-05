@@ -72,7 +72,18 @@ struct AppState {
     float sortTimeMs = 0.f;
     float gpuTimeMs = 0.f;
 
+    float sortTimeGpuMs = 0.f;
+
     std::vector<float> extentHistogramData;
+
+    int gatherValidationStatus = -1;
+    int histogramScanValidationStatus = -1;
+    int scatterValidationStatus = -1;
+
+
+    int sortMethod = 1;
+    int cpuGpuCompareStatus = -1;
+    int monotonicCheckStatus = -1;
 };
 
 static bool hasPlyExtension(const std::string& path)
@@ -224,8 +235,14 @@ int main()
     {
     Shader splatShader("shaders/splat.vert", "shaders/splat.frag");
     Shader computeShader(Shader::ComputeShader{}, "shaders/preprocessing.comp");
+    Shader gatherShader(Shader::ComputeShader{}, "shaders/radix_gather.comp");
+    Shader histogramShader(Shader::ComputeShader{}, "shaders/radix_histogram.comp");
+    Shader scanWorkgroupsShader(Shader::ComputeShader{}, "shaders/radix_scan_workgroups.comp");
+    Shader scanBinsShader(Shader::ComputeShader{}, "shaders/radix_scan_bins.comp");
+    Shader scatterShader(Shader::ComputeShader{}, "shaders/radix_scatter.comp");
     SplatRenderer renderer;
     GpuTimer gpuTimer;
+    GpuTimer sortGpuTimer;
     state.renderer = &renderer;
     state.presets = loadPresets(state.presetsPath);
     if (loadSceneFromPath(state, "resources/bonsai.ply"))
@@ -364,12 +381,76 @@ int main()
             ImGui::Text("FPS: %.1f  (%.2f ms)", state.smoothedFps, delta * 1000.f);
             ImGui::PlotLines("##FpsHistory", state.fpsHistory.data(), static_cast<int>(state.fpsHistory.size()),
                 state.fpsHistoryIdx, fpsOverlay, 0.0f, FLT_MAX, ImVec2(0, 60));
-            ImGui::Text("Sort time: %.3f ms", state.sortTimeMs);
+            ImGui::Text("Sort time (CPU wall-clock): %.3f ms", state.sortTimeMs);
             ImGui::Text("GPU time: %.3f ms", state.gpuTimeMs);
+            static const char* sortMethodNames[] = { "CPU (std::sort)", "GPU (radix)" };
+            ImGui::Combo("Sort method", &state.sortMethod, sortMethodNames, IM_ARRAYSIZE(sortMethodNames));
+            if (state.sortMethod == 1)
+                ImGui::Text("Sort time (GPU timer): %.3f ms", state.sortTimeGpuMs);
+            else
+                ImGui::TextDisabled("Sort time (GPU timer): %.3f ms (last GPU-mode reading)", state.sortTimeGpuMs);
             ImGui::Separator();
             ImGui::Text("Splats loaded: %u", renderer.getSplatCount());
             ImGui::Text("Splats after culling: %u", renderer.getDrawCount());
             ImGui::Text("Splats drawn: %u", renderer.getDrawCount());
+            ImGui::Separator();
+            if (ImGui::Button("Validate GPU gather (debug)"))
+            {
+                bool ok = renderer.debugValidateGatherStage(gatherShader);
+                state.gatherValidationStatus = ok ? 1 : 0;
+            }
+            ImGui::SameLine();
+            if (state.gatherValidationStatus == 1)
+                ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "OK -- GPU keys == CPU");
+            else if (state.gatherValidationStatus == 0)
+                ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "MISMATCH -- see console");
+
+            if (ImGui::Button("Validate GPU histogram+scan (debug)"))
+            {
+                bool ok = renderer.debugValidateHistogramScanStage(gatherShader, histogramShader,
+                    scanWorkgroupsShader, scanBinsShader);
+                state.histogramScanValidationStatus = ok ? 1 : 0;
+            }
+            ImGui::SameLine();
+            if (state.histogramScanValidationStatus == 1)
+                ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "OK -- sums check out");
+            else if (state.histogramScanValidationStatus == 0)
+                ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "FAILED -- see console");
+
+            if (ImGui::Button("Validate GPU scatter (debug)"))
+            {
+                bool ok = renderer.debugValidateScatterStage(gatherShader, histogramShader,
+                    scanWorkgroupsShader, scanBinsShader, scatterShader);
+                state.scatterValidationStatus = ok ? 1 : 0;
+            }
+            ImGui::SameLine();
+            if (state.scatterValidationStatus == 1)
+                ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "OK -- sorted & stable");
+            else if (state.scatterValidationStatus == 0)
+                ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "FAILED -- see console");
+
+            if (ImGui::Button("Compare CPU vs GPU sort (debug)"))
+            {
+                bool ok = renderer.debugCompareSortMethods(camera, gatherShader, histogramShader,
+                    scanWorkgroupsShader, scanBinsShader, scatterShader);
+                state.cpuGpuCompareStatus = ok ? 1 : 0;
+            }
+            ImGui::SameLine();
+            if (state.cpuGpuCompareStatus == 1)
+                ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "OK -- same order (mod ties)");
+            else if (state.cpuGpuCompareStatus == 0)
+                ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "MISMATCH -- see console");
+
+            if (ImGui::Button("Check sort monotonic (debug)"))
+            {
+                bool ok = renderer.debugCheckSortMonotonic();
+                state.monotonicCheckStatus = ok ? 1 : 0;
+            }
+            ImGui::SameLine();
+            if (state.monotonicCheckStatus == 1)
+                ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "OK -- depth non-increasing");
+            else if (state.monotonicCheckStatus == 0)
+                ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "VIOLATION -- see console");
 
             if (ImGui::TreeNode("Histograms"))
             {
@@ -442,13 +523,20 @@ int main()
         float gpuMs;
         if (gpuTimer.tryGetResultMs(gpuMs))
             state.gpuTimeMs = gpuMs;
+        float sortGpuMs;
+        if (sortGpuTimer.tryGetResultMs(sortGpuMs))
+            state.sortTimeGpuMs = sortGpuMs;
 
         splatShader.use();
         gpuTimer.begin();
         renderer.preprocess(computeShader, camera, glm::vec2(w, h), state.renderParams);
         if (camera.needsSort()) {
+            SortMethod method = state.sortMethod == 0 ? SortMethod::CPU : SortMethod::GPU;
             auto sortStart = std::chrono::steady_clock::now();
-            renderer.sort(camera);
+            if (method == SortMethod::GPU) sortGpuTimer.begin();
+            renderer.sort(camera, method,
+                gatherShader, histogramShader, scanWorkgroupsShader, scanBinsShader, scatterShader);
+            if (method == SortMethod::GPU) sortGpuTimer.end();
             auto sortEnd = std::chrono::steady_clock::now();
             state.sortTimeMs = std::chrono::duration<float, std::milli>(sortEnd - sortStart).count();
             camera.onSortComplete();

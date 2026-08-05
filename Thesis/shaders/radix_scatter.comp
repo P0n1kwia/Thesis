@@ -1,0 +1,72 @@
+#version 430 core
+
+layout(local_size_x = 256) in;
+
+layout(std430, binding = 1) readonly  buffer IndexBufferA  { uint idsSrc[]; };
+layout(std430, binding = 5) readonly  buffer KeysBufferA   { uint keysSrc[]; };
+layout(std430, binding = 7) writeonly buffer IndexBufferB  { uint idsDst[]; };
+layout(std430, binding = 6) writeonly buffer KeysBufferB   { uint keysDst[]; };
+layout(std430, binding = 8) readonly  buffer WgHistograms  { uint wgHistograms[]; };
+layout(std430, binding = 9) readonly  buffer BinOffsets    { uint binOffset[]; };
+
+uniform uint uCount;
+uniform uint uShift;
+uniform uint uMaxWorkgroups;
+
+shared uint counts[16][256];  
+
+void main()
+{
+    uint t = gl_LocalInvocationID.x;
+    uint wg = gl_WorkGroupID.x;
+    uint base = wg * 1024u + t * 4u;
+
+    uint localCount[16];
+    for (uint d = 0u; d < 16u; ++d) localCount[d] = 0u;
+
+    uint myRank[4];
+    uint myDigit[4];
+    bool valid[4];
+
+    for (uint j = 0u; j < 4u; ++j)
+    {
+        uint idx = base + j;
+        valid[j] = idx < uCount;
+        if (valid[j])
+        {
+            uint d = (keysSrc[idx] >> uShift) & 0xFu;
+            myDigit[j] = d;
+            myRank[j] = localCount[d];
+            localCount[d]++;
+        }
+    }
+
+    for (uint d = 0u; d < 16u; ++d)
+        counts[d][t] = localCount[d];
+    barrier();
+
+    for (uint offset = 1u; offset < 256u; offset <<= 1u)
+    {
+        uint prev[16];
+        if (t >= offset)
+            for (uint d = 0u; d < 16u; ++d) prev[d] = counts[d][t - offset];
+        barrier();
+        if (t >= offset)
+            for (uint d = 0u; d < 16u; ++d) counts[d][t] += prev[d];
+        barrier();
+    }
+
+    for (uint j = 0u; j < 4u; ++j)
+    {
+        uint idx = base + j;
+        if (valid[j])
+        {
+            uint d = myDigit[j];
+            uint threadPrefix = counts[d][t] - localCount[d];
+            uint dest = binOffset[d] + wgHistograms[d * uMaxWorkgroups + wg] + threadPrefix + myRank[j];
+
+            keysDst[dest] = keysSrc[idx];
+            idsDst[dest]  = idsSrc[idx];
+        }
+    }
+}

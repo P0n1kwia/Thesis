@@ -4,6 +4,8 @@
 #include <camera.h>
 #include <shader.h>
 
+enum class SortMethod { CPU, GPU };
+
 struct RenderParams
 {
 	float minOpacity = 0.0039f;
@@ -20,7 +22,10 @@ class SplatRenderer
 public:
 	void upload(const std::vector<Splat>& splats);
 	void draw(Shader& shader,  Camera& camera, const glm::vec2& screenSize);
-	void sort(Camera& camera);
+
+	void sort(Camera& camera, SortMethod method, Shader& gatherShader, Shader& histogramShader,
+		Shader& scanWorkgroupsShader, Shader& scanBinsShader, Shader& scatterShader);
+
 	void preprocess(Shader& computeShader, Camera& camera, const glm::vec2& screenSize, const RenderParams& params);
 	size_t getEstimatedVramBytes() const;
 	uint32_t getSplatCount() const;
@@ -29,6 +34,16 @@ public:
 	const std::vector<uint32_t>& getVisibleIndices() const;
 	std::vector<glm::vec2> fetchVisibleScreenExtents() const;
 
+	bool debugValidateGatherStage(Shader& gatherShader);
+	bool debugValidateHistogramScanStage(Shader& gatherShader, Shader& histogramShader,
+		Shader& scanWorkgroupsShader, Shader& scanBinsShader);
+	bool debugValidateScatterStage(Shader& gatherShader, Shader& histogramShader,
+		Shader& scanWorkgroupsShader, Shader& scanBinsShader, Shader& scatterShader);
+	bool debugCompareSortMethods(Camera& camera, Shader& gatherShader, Shader& histogramShader,
+		Shader& scanWorkgroupsShader, Shader& scanBinsShader, Shader& scatterShader);
+
+	bool debugCheckSortMonotonic() const;
+
 	~SplatRenderer();
 	SplatRenderer() = default;
 	SplatRenderer(const SplatRenderer&) = delete;
@@ -36,6 +51,8 @@ public:
 private:
 
 	void initGL();
+	void gpuRadixSort(Shader& gatherShader, Shader& histogramShader,
+		Shader& scanWorkgroupsShader, Shader& scanBinsShader, Shader& scatterShader);
 
 	unsigned int VAO = 0;
 	unsigned int EBO = 0;
@@ -45,6 +62,14 @@ private:
 	unsigned int preprocSSBO = 0;
 	unsigned int visibleCountSSBO = 0;
 	unsigned int visibleIndexSSBO = 0;
+
+	unsigned int keysSSBO_A = 0;
+	unsigned int keysSSBO_B = 0;
+	unsigned int indexSSBO_B = 0;
+	unsigned int wgHistogramsSSBO = 0;
+	unsigned int binOffsetsSSBO = 0;
+	uint32_t maxWorkgroups = 0;
+
 	unsigned int splatCount = 0;
 	std::vector<Splat> splatsVector;
 	std::vector<float> depths;
