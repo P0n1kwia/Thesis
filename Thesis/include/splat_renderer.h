@@ -23,6 +23,8 @@ public:
 	void sort(Camera& camera);
 	void preprocess(Shader& computeShader, Camera& camera, const glm::vec2& screenSize, const RenderParams& params);
 	size_t getEstimatedVramBytes() const;
+	uint32_t getSplatCount() const;
+	uint32_t getDrawCount() const;
 
 	~SplatRenderer();
 	SplatRenderer() = default;

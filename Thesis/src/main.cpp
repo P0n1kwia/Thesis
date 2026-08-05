@@ -2,6 +2,9 @@
 #include <filesystem>
 #include <algorithm>
 #include <cctype>
+#include <cfloat>
+#include <chrono>
+#include <cstdio>
 #include <vector>
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
@@ -32,6 +35,7 @@ extern "C" {
 #endif
 const unsigned int WINDOW_HEIGHT = 720;
 const unsigned int WINDOW_WIDTH = 1280;
+constexpr int FPS_HISTORY_SIZE = 120;
 struct AppState {
     Camera* camera = nullptr;
     SplatRenderer* renderer = nullptr;
@@ -58,6 +62,11 @@ struct AppState {
     int debugModeRight = 0;
 
     RenderParams renderParams;
+
+    float smoothedFps = 0.f;
+    std::vector<float> fpsHistory = std::vector<float>(FPS_HISTORY_SIZE, 0.0f);
+    int fpsHistoryIdx = 0;
+    float sortTimeMs = 0.f;
 };
 
 static bool hasPlyExtension(const std::string& path)
@@ -224,6 +233,9 @@ int main()
         float  delta = static_cast<float>(now - prevTime);
         prevTime = now;
         fps      = 1.f / delta;
+        state.smoothedFps = glm::mix(state.smoothedFps, fps, 0.1f);
+        state.fpsHistory[state.fpsHistoryIdx] = state.smoothedFps;
+        state.fpsHistoryIdx = (state.fpsHistoryIdx + 1) % FPS_HISTORY_SIZE;
 
         glfwPollEvents();
 
@@ -235,8 +247,6 @@ int main()
         ImGui::NewFrame();
 
         ImGui::Begin("Status");
-        ImGui::Text("FPS: %.1f  (%.2f ms)", fps, delta * 1000.f);
-        ImGui::Separator();
         ImGui::Text("Left-drag: orbit  |  Right-drag: pan  |  Scroll: zoom");
         ImGui::Separator();
         if (ImGui::CollapsingHeader("Scene", ImGuiTreeNodeFlags_DefaultOpen))
@@ -338,6 +348,20 @@ int main()
             if (state.splitScreenEnabled)
                 ImGui::Combo("Right", &state.debugModeRight, debugModeNames, IM_ARRAYSIZE(debugModeNames));
         }
+        ImGui::Separator();
+        if (ImGui::CollapsingHeader("Stats", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            char fpsOverlay[32];
+            std::snprintf(fpsOverlay, sizeof(fpsOverlay), "%.1f fps", state.smoothedFps);
+            ImGui::Text("FPS: %.1f  (%.2f ms)", state.smoothedFps, delta * 1000.f);
+            ImGui::PlotLines("##FpsHistory", state.fpsHistory.data(), static_cast<int>(state.fpsHistory.size()),
+                state.fpsHistoryIdx, fpsOverlay, 0.0f, FLT_MAX, ImVec2(0, 60));
+            ImGui::Text("Sort time: %.3f ms", state.sortTimeMs);
+            ImGui::Separator();
+            ImGui::Text("Splats loaded: %u", renderer.getSplatCount());
+            ImGui::Text("Splats after culling: %u", renderer.getDrawCount());
+            ImGui::Text("Splats drawn: %u", renderer.getDrawCount());
+        }
         ImGui::End();
 
         if (state.splitScreenEnabled)
@@ -359,7 +383,10 @@ int main()
         splatShader.use();
         renderer.preprocess(computeShader, camera, glm::vec2(w, h), state.renderParams);
         if (camera.needsSort()) {
+            auto sortStart = std::chrono::steady_clock::now();
             renderer.sort(camera);
+            auto sortEnd = std::chrono::steady_clock::now();
+            state.sortTimeMs = std::chrono::duration<float, std::milli>(sortEnd - sortStart).count();
             camera.onSortComplete();
         }
 

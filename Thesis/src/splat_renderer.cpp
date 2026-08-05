@@ -148,6 +148,16 @@ size_t SplatRenderer::getEstimatedVramBytes() const
 	return bytes;
 }
 
+uint32_t SplatRenderer::getSplatCount() const
+{
+	return splatCount;
+}
+
+uint32_t SplatRenderer::getDrawCount() const
+{
+	return drawCount;
+}
+
 SplatRenderer::~SplatRenderer()
 {
 	glDeleteVertexArrays(1, &VAO);
