@@ -14,6 +14,10 @@ uniform mat4 uModel;
 uniform vec3 uCamPos;
 uniform uint uCount;
 
+uniform float uMinOpacity;
+uniform float uScaleMultiplier;
+uniform float uDilation;
+uniform float uMaxRadiusPx;
 
 const float SH_C0 = 0.28209479177387814;
 const float SH_C1 = 0.4886025119029199;
@@ -25,8 +29,6 @@ const float SH_C2[5] = float[5](
 	0.5462742152960396
 );
 const uint SPLAT_STRIDE = 38u;
-
-const float MIN_OPACITY = 0.0039;
 
 bool insideFrustum(vec3 p, float radius)
 {
@@ -45,7 +47,7 @@ void main()
 	float aOpacity    = splatData[base + 6u];
 	vec3  worldPos    = vec3(uModel * vec4(aPos, 1.0));
 	float radius      = 3.0 * max(aScale.x, max(aScale.y,aScale.z));
-	if(aOpacity < MIN_OPACITY || !insideFrustum(worldPos, radius))
+	if(aOpacity < uMinOpacity || !insideFrustum(worldPos, radius))
 	{
         preprocBuffer[3u*i + 0u] = vec4(0.0);
         preprocBuffer[3u*i + 1u] = vec4(0.0);
@@ -76,10 +78,11 @@ void main()
 	           + SH_C2[3] * xz * c7
 	           + SH_C2[4] * (xx - yy) * c8;
 	color += 0.5f;
+	vec3 scaledAScale = aScale * uScaleMultiplier;
 	mat3 S = mat3(
-    vec3(aScale.x, 0.0, 0.0),
-    vec3(0.0, aScale.y, 0.0),
-    vec3(0.0, 0.0, aScale.z)
+    vec3(scaledAScale.x, 0.0, 0.0),
+    vec3(0.0, scaledAScale.y, 0.0),
+    vec3(0.0, 0.0, scaledAScale.z)
 	);
 	float w = aQuaternion.x;
 	float x = aQuaternion.y;
@@ -113,8 +116,6 @@ void main()
 	float limy = 1.3 * (uScreenSize.y * 0.5) / fy;
 	float tx = clamp(t.x / tz, -limx, limx) * tz;
 	float ty = clamp(t.y / tz, -limy, limy) * tz;
-	// Columns again: the perspective terms belong in the THIRD COLUMN, otherwise
-	// they are dropped when Cov2D is truncated to its upper-left 2x2 block.
 	mat3 J = mat3(
 		vec3(fx / tz,               0.0,                  0.0),
 		vec3(0.0,                   fy / tz,              0.0),
@@ -126,12 +127,11 @@ void main()
 	vec2(Cov2D[0].xy),
 	vec2(Cov2D[1].xy)
 	);
-	D2[0][0] += 0.3;
-	D2[1][1] += 0.3;
-	const float MAX_SPLAT_RADIUS_PX = 1024.0;
+	D2[0][0] += uDilation;
+	D2[1][1] += uDilation;
 	vec2 extent = min(vec2(ceil(3.0 * sqrt(max(1e-6, D2[0][0]))),
                            ceil(3.0 * sqrt(max(1e-6, D2[1][1])))),
-						   vec2(MAX_SPLAT_RADIUS_PX));
+						   vec2(uMaxRadiusPx));
 
     vec4 clipPos = uProj * t;
     vec2 center  = ((clipPos.xy / clipPos.w) * 0.5 + 0.5) * uScreenSize;

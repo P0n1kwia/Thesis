@@ -3,13 +3,24 @@
 #include <vector>
 #include <camera.h>
 #include <shader.h>
+
+struct RenderParams
+{
+	float minOpacity = 0.0039f;
+	float scaleMultiplier = 1.0f;
+	float dilation = 0.3f;
+	float maxRadiusPx = 1024.0f;
+
+	bool operator==(const RenderParams&) const = default;
+};
+
 class SplatRenderer
 {
 public:
 	void upload(const std::vector<Splat>& splats);
 	void draw(Shader& shader,  Camera& camera, const glm::vec2& screenSize);
 	void sort(Camera& camera);
-	void preprocess(Shader& computeShader, Camera& camera, const glm::vec2& screenSize);
+	void preprocess(Shader& computeShader, Camera& camera, const glm::vec2& screenSize, const RenderParams& params);
 	size_t getEstimatedVramBytes() const;
 
 	~SplatRenderer();
@@ -37,6 +48,7 @@ private:
 	glm::mat4 lastPreprocessProj{};
 	glm::vec3 lastPreprocessCamPos{};
 	glm::vec2 lastPreprocessScreenSize{};
+	RenderParams lastPreprocessParams{};
 	bool hasValidPreprocess = false;
 
 	std::vector<uint32_t> visibleIndices;

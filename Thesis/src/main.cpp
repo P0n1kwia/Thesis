@@ -56,6 +56,8 @@ struct AppState {
     bool splitScreenEnabled = false;
     int debugModeLeft = 0;
     int debugModeRight = 0;
+
+    RenderParams renderParams;
 };
 
 static bool hasPlyExtension(const std::string& path)
@@ -310,6 +312,14 @@ int main()
             if (!hasSelection) ImGui::EndDisabled();
         }
         ImGui::Separator();
+        if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::SliderFloat("Opacity threshold", &state.renderParams.minOpacity, 0.0f, 0.1f, "%.4f");
+            ImGui::SliderFloat("Scale multiplier", &state.renderParams.scaleMultiplier, 0.1f, 3.0f);
+            ImGui::SliderFloat("Dilation", &state.renderParams.dilation, 0.0f, 2.0f);
+            ImGui::SliderFloat("Max splat radius (px)", &state.renderParams.maxRadiusPx, 1.0f, 1024.0f);
+        }
+        ImGui::Separator();
         if (ImGui::CollapsingHeader("View", ImGuiTreeNodeFlags_DefaultOpen))
         {
             static const char* debugModeNames[] = {
@@ -340,7 +350,7 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         splatShader.use();
-        renderer.preprocess(computeShader, camera, glm::vec2(w, h));
+        renderer.preprocess(computeShader, camera, glm::vec2(w, h), state.renderParams);
         if (camera.needsSort()) {
             renderer.sort(camera);
             camera.onSortComplete();

@@ -77,7 +77,7 @@ void SplatRenderer::sort(Camera& camera)
 	drawCount = static_cast<uint32_t>(visibleIndices.size());
 }
 
-void SplatRenderer::preprocess(Shader& computeShader, Camera& camera, const glm::vec2& screenSize)
+void SplatRenderer::preprocess(Shader& computeShader, Camera& camera, const glm::vec2& screenSize, const RenderParams& params)
 {
 	const glm::mat4& view = camera.getViewMatrix();
 	const glm::mat4& proj = camera.getProjMatrix();
@@ -85,7 +85,8 @@ void SplatRenderer::preprocess(Shader& computeShader, Camera& camera, const glm:
 
 
 	if (hasValidPreprocess && view == lastPreprocessView && proj == lastPreprocessProj &&
-		camPos == lastPreprocessCamPos && screenSize == lastPreprocessScreenSize)
+		camPos == lastPreprocessCamPos && screenSize == lastPreprocessScreenSize &&
+		params == lastPreprocessParams)
 	{
 		return;
 	}
@@ -93,6 +94,7 @@ void SplatRenderer::preprocess(Shader& computeShader, Camera& camera, const glm:
 	lastPreprocessProj = proj;
 	lastPreprocessCamPos = camPos;
 	lastPreprocessScreenSize = screenSize;
+	lastPreprocessParams = params;
 	hasValidPreprocess = true;
 
 	computeShader.use();
@@ -102,6 +104,10 @@ void SplatRenderer::preprocess(Shader& computeShader, Camera& camera, const glm:
 	computeShader.setVec3("uCamPos", camPos);
 	computeShader.setVec2("uScreenSize", screenSize);
 	computeShader.setUInt("uCount", splatCount);
+	computeShader.setFloat("uMinOpacity", params.minOpacity);
+	computeShader.setFloat("uScaleMultiplier", params.scaleMultiplier);
+	computeShader.setFloat("uDilation", params.dilation);
+	computeShader.setFloat("uMaxRadiusPx", params.maxRadiusPx);
 
 	auto frustumPlanes = extractFrustumPlanes(proj * view);
 	computeShader.setVec4Array("uFrustum", frustumPlanes.data(), static_cast<unsigned int>(frustumPlanes.size()));
