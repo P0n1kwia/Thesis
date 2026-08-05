@@ -77,6 +77,31 @@ void Camera::onViewportResize(int w, int h)
 	dirty = true;
 }
 
+CameraConfig Camera::getConfig() const
+{
+	CameraConfig cfg;
+	cfg.fovY = fovY;
+	cfg.nearPlane = nearPlane;
+	cfg.farPlane = farPlane;
+	cfg.target = target;
+	cfg.radius = radius;
+	cfg.yaw = yaw;
+	cfg.pitch = pitch;
+	return cfg;
+}
+
+void Camera::applyConfig(const CameraConfig& cfg)
+{
+	fovY = cfg.fovY;
+	nearPlane = cfg.nearPlane;
+	farPlane = cfg.farPlane;
+	target = cfg.target;
+	radius = cfg.radius;
+	yaw = cfg.yaw;
+	pitch = cfg.pitch;
+	dirty = true;
+}
+
 bool Camera::needsSort() const
 {
 	return glm::distance(lastSortPos, getPosition()) > 0.002f * radius;

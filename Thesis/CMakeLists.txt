@@ -10,8 +10,11 @@ target_link_libraries(Thesis PRIVATE
     glad_gl_43_core
     glm::glm
     imgui_lib
+    implot_lib
     happly_lib
     stb_lib
+    nlohmann_json::nlohmann_json
+    nfd
 )
 
 set_target_properties(Thesis PROPERTIES

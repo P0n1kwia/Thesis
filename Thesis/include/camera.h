@@ -32,6 +32,8 @@ public:
     void pan(float dx, float dy);
     void onViewportResize(int w, int h);
 
+    CameraConfig getConfig() const;
+    void applyConfig(const CameraConfig& cfg);
 
     bool needsSort() const;
     void onSortComplete();

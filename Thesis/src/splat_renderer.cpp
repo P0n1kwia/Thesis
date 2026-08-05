@@ -21,7 +21,6 @@ void SplatRenderer::upload(const std::vector<Splat>& splats)
 	visibleIndices.clear();
 	drawCount = 0;
 
-
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, splatSSBO);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(Splat) * splatCount, splatsVector.data(), GL_STATIC_DRAW);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, SPLAT_SSBO_BINDING, splatSSBO);
@@ -78,7 +77,7 @@ void SplatRenderer::sort(Camera& camera)
 	drawCount = static_cast<uint32_t>(visibleIndices.size());
 }
 
-void SplatRenderer::preprocess(Shader& computeShader, Camera& camera, const glm::vec2& screenSize)
+void SplatRenderer::preprocess(Shader& computeShader, Camera& camera, const glm::vec2& screenSize, const RenderParams& params)
 {
 	const glm::mat4& view = camera.getViewMatrix();
 	const glm::mat4& proj = camera.getProjMatrix();
@@ -86,7 +85,8 @@ void SplatRenderer::preprocess(Shader& computeShader, Camera& camera, const glm:
 
 
 	if (hasValidPreprocess && view == lastPreprocessView && proj == lastPreprocessProj &&
-		camPos == lastPreprocessCamPos && screenSize == lastPreprocessScreenSize)
+		camPos == lastPreprocessCamPos && screenSize == lastPreprocessScreenSize &&
+		params == lastPreprocessParams)
 	{
 		return;
 	}
@@ -94,6 +94,7 @@ void SplatRenderer::preprocess(Shader& computeShader, Camera& camera, const glm:
 	lastPreprocessProj = proj;
 	lastPreprocessCamPos = camPos;
 	lastPreprocessScreenSize = screenSize;
+	lastPreprocessParams = params;
 	hasValidPreprocess = true;
 
 	computeShader.use();
@@ -103,6 +104,11 @@ void SplatRenderer::preprocess(Shader& computeShader, Camera& camera, const glm:
 	computeShader.setVec3("uCamPos", camPos);
 	computeShader.setVec2("uScreenSize", screenSize);
 	computeShader.setUInt("uCount", splatCount);
+	computeShader.setFloat("uMinOpacity", params.minOpacity);
+	computeShader.setFloat("uScaleMultiplier", params.scaleMultiplier);
+	computeShader.setFloat("uDilation", params.dilation);
+	computeShader.setFloat("uMaxRadiusPx", params.maxRadiusPx);
+	computeShader.setInt("uSHDegree", params.shDegree);
 
 	auto frustumPlanes = extractFrustumPlanes(proj * view);
 	computeShader.setVec4Array("uFrustum", frustumPlanes.data(), static_cast<unsigned int>(frustumPlanes.size()));
@@ -129,6 +135,55 @@ void SplatRenderer::preprocess(Shader& computeShader, Camera& camera, const glm:
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, visibleIndexSSBO);
 		glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(uint32_t) * visibleCount, visibleIndices.data());
 	}
+}
+
+size_t SplatRenderer::getEstimatedVramBytes() const
+{
+	size_t bytes = 0;
+	bytes += sizeof(Splat) * splatCount;         // splatSSBO
+	bytes += sizeof(uint32_t) * splatCount;       // indexSSBO
+	bytes += sizeof(glm::vec4) * 3 * splatCount;  // preprocSSBO
+	bytes += sizeof(GLuint);                      // visibleCountSSBO
+	bytes += sizeof(uint32_t) * splatCount;       // visibleIndexSSBO
+	return bytes;
+}
+
+uint32_t SplatRenderer::getSplatCount() const
+{
+	return splatCount;
+}
+
+uint32_t SplatRenderer::getDrawCount() const
+{
+	return drawCount;
+}
+
+const std::vector<Splat>& SplatRenderer::getSplats() const
+{
+	return splatsVector;
+}
+
+const std::vector<uint32_t>& SplatRenderer::getVisibleIndices() const
+{
+	return visibleIndices;
+}
+
+std::vector<glm::vec2> SplatRenderer::fetchVisibleScreenExtents() const
+{
+	std::vector<glm::vec2> extents;
+	extents.reserve(visibleIndices.size());
+	if (visibleIndices.empty()) return extents;
+
+	std::vector<glm::vec4> preprocData(3 * static_cast<size_t>(splatCount));
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, preprocSSBO);
+	glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(glm::vec4) * preprocData.size(), preprocData.data());
+
+	for (uint32_t idx : visibleIndices)
+	{
+		const glm::vec4& centerExtent = preprocData[3u * idx];
+		extents.emplace_back(centerExtent.z, centerExtent.w);
+	}
+	return extents;
 }
 
 SplatRenderer::~SplatRenderer()
