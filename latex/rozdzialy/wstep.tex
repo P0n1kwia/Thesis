@@ -1,0 +1,44 @@
+% !TEX root = ../main.tex
+\chapter*{Wstęp}
+\addcontentsline{toc}{chapter}{Wstęp}
+
+Rekonstrukcja trójwymiarowych scen ze zdjęć jest jednym z~ważniejszych
+problemów współczesnej grafiki komputerowej. Metody oparte na geometrii
+wielowidokowej, takie jak Structure from Motion i~Multi-View Stereo,
+dostarczały jedynie przybliżonych reprezentacji pozbawionych
+fotorealistycznego wyglądu. Krokiem naprzód w~tej dziedzinie była nowa
+technika neuronowych pól luminancji (NeRF), jednak jej praktyczne
+zastosowanie ograniczały wielogodzinny czas treningu oraz brak możliwości
+renderowania w~czasie rzeczywistym, co sprawiło, że trzeba było szukać innej
+metody.
+
+Opublikowana w~2023 roku metoda 3D Gaussian Splatting (3DGS) rozwiązuje
+problemy z~treningiem i~real-time renderingiem. Reprezentuje ona scenę jako
+zbiór trójwymiarowych Gaussianów i~renderuje ją za pomocą różniczkowalnego
+rasteryzatora kafelkowego na GPU. Metoda ta osiąga jakość wizualną
+porównywalną z~NeRF przy kilkudziesięciu klatkach na sekundę. Krótko po
+publikacji 3DGS znalazł zastosowanie w~produkcji filmowej, wizualizacji
+architektonicznej, a~także w~badaniach nad robotyką i~autonomicznymi
+pojazdami.
+
+Dynamiczny rozwój metody ujawnił problemy w~dostępnych narzędziach do jej
+wizualizacji. Istniejące rozwiązania zmuszają użytkownika do wyboru między
+narzędziami analitycznymi, narzędziami do edycji jak i~UX. Narzędzia
+analityczne, jak splatviz, wymagają karty graficznej NVIDIA z~obsługą CUDA
+i~oferują nieprzyjazny użytkownikowi interfejs. Narzędzia produkcyjne, jak
+SuperSplat oparty na WebGL, cechują się dojrzałym UX i~możliwością edycji
+scen, ale są pozbawione jakichkolwiek narzędzi do analizy scen.
+
+Implementacje niezależne od CUDA, jak 3DGS.cpp oparte na Vulkanie, pozostają
+na poziomie bazowym, bez możliwości debugowania czy przeglądania statystyk
+sceny, jak i~bez możliwości edycji. Żadne z~dostępnych narzędzi nie łączy
+niezależności od CUDA z~podstawową analityką, edycją i~przyjaznym UI.
+
+Celem niniejszej pracy jest zaprojektowanie i~implementacja systemu
+wizualizacji scen trójwymiarowych opartego na metodzie 3DGS, działającego
+niezależnie od technologii CUDA, z~wykorzystaniem języka C++, graficznego
+API OpenGL i~wprowadzonych w~wersji 4.3 OpenGL-a compute shaderów.
+
+Praca ta obejmuje analizę istniejących rozwiązań, implementację całego
+potoku graficznego -- od wczytywania splatów do rasteryzacji Gaussianów --
+oraz testy wydajnościowe.
