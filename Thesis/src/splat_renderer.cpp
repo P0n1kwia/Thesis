@@ -14,6 +14,7 @@ namespace
 	constexpr unsigned int PREPROC_SSBO_BINDING = 2;
 	constexpr unsigned int VISIBLE_COUNT_SSBO_BINDING = 3;
 	constexpr unsigned int VISIBLE_INDEX_SSBO_BINDING = 4;
+	constexpr unsigned int FRAG_COUNTER_SSBO_BINDING = 10;
 
 
 	constexpr unsigned int KEYS_A_SSBO_BINDING = 5;
@@ -614,6 +615,22 @@ const std::vector<uint32_t>& SplatRenderer::getVisibleIndices() const
 	return visibleIndices;
 }
 
+void SplatRenderer::resetFragmentCounter()
+{
+	GLuint zero = 0;
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, fragCounterSSBO);
+	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(GLuint), &zero);
+}
+
+uint32_t SplatRenderer::readFragmentCounter() const
+{
+	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_BUFFER_UPDATE_BARRIER_BIT);
+	GLuint count = 0;
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, fragCounterSSBO);
+	glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(GLuint), &count);
+	return static_cast<uint32_t>(count);
+}
+
 std::vector<glm::vec2> SplatRenderer::fetchVisibleScreenExtents() const
 {
 	std::vector<glm::vec2> extents;
@@ -642,6 +659,7 @@ SplatRenderer::~SplatRenderer()
 	glDeleteBuffers(1, &preprocSSBO);
 	glDeleteBuffers(1, &visibleCountSSBO);
 	glDeleteBuffers(1, &visibleIndexSSBO);
+	glDeleteBuffers(1, &fragCounterSSBO);
 	glDeleteBuffers(1, &keysSSBO_A);
 	glDeleteBuffers(1, &keysSSBO_B);
 	glDeleteBuffers(1, &indexSSBO_B);
@@ -681,6 +699,12 @@ void SplatRenderer::initGL()
 	glGenBuffers(1, &preprocSSBO);
 	glGenBuffers(1, &visibleCountSSBO);
 	glGenBuffers(1, &visibleIndexSSBO);
+
+	glGenBuffers(1, &fragCounterSSBO);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, fragCounterSSBO);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(GLuint), nullptr, GL_DYNAMIC_COPY);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, FRAG_COUNTER_SSBO_BINDING, fragCounterSSBO);
+
 	glGenBuffers(1, &keysSSBO_A);
 	glGenBuffers(1, &keysSSBO_B);
 	glGenBuffers(1, &indexSSBO_B);

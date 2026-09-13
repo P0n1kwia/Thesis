@@ -34,6 +34,9 @@ public:
 	const std::vector<uint32_t>& getVisibleIndices() const;
 	std::vector<glm::vec2> fetchVisibleScreenExtents() const;
 
+	void resetFragmentCounter();
+	uint32_t readFragmentCounter() const;
+
 	bool debugValidateGatherStage(Shader& gatherShader);
 	bool debugValidateHistogramScanStage(Shader& gatherShader, Shader& histogramShader,
 		Shader& scanWorkgroupsShader, Shader& scanBinsShader);
@@ -62,6 +65,7 @@ private:
 	unsigned int preprocSSBO = 0;
 	unsigned int visibleCountSSBO = 0;
 	unsigned int visibleIndexSSBO = 0;
+	unsigned int fragCounterSSBO = 0;
 
 	unsigned int keysSSBO_A = 0;
 	unsigned int keysSSBO_B = 0;

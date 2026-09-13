@@ -6,6 +6,7 @@ public:
 	void begin();
 	void end();
 	bool tryGetResultMs(float& outMs);
+	float endAndWaitMs();
 
 	~GpuTimer();
 	GpuTimer() = default;

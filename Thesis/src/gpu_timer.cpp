@@ -38,6 +38,20 @@ bool GpuTimer::tryGetResultMs(float& outMs)
 	return true;
 }
 
+float GpuTimer::endAndWaitMs()
+{
+	int slot = frameIndex % 2;
+	glQueryCounter(endQueries[slot], GL_TIMESTAMP);
+
+	GLuint64 startTime = 0, endTime = 0;
+	glGetQueryObjectui64v(startQueries[slot], GL_QUERY_RESULT, &startTime); // blocks until available
+	glGetQueryObjectui64v(endQueries[slot], GL_QUERY_RESULT, &endTime);
+	pending[slot] = false;
+	frameIndex++;
+
+	return static_cast<float>(endTime - startTime) / 1000000.0f;
+}
+
 GpuTimer::~GpuTimer()
 {
 	if (initialized)

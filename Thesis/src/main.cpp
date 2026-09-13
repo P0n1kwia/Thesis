@@ -21,6 +21,8 @@
 #include <gpu_timer.h>
 #include <screenshot.h>
 #include <camera_presets.h>
+#include <benchmark.h>
+#include <image_compare.h>
 #include <nfd.hpp>
 
 
@@ -172,8 +174,31 @@ static void dropCB(GLFWwindow* w, int count, const char** paths)
     }
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    
+    for (int i = 1; i + 2 < argc; ++i)
+    {
+        if (std::string(argv[i]) == "--compare")
+        {
+            try
+            {
+                ImageCompareResult r = compareImages(argv[i + 1], argv[i + 2]);
+                std::cout << "PSNR: " << r.psnrDb << " dB\n";
+                std::cout << "SSIM: " << r.ssim << "  (" << r.width << "x" << r.height << ")\n";
+                return 0;
+            }
+            catch (const std::exception& e)
+            {
+                std::cerr << "Compare failed: " << e.what() << "\n";
+                return 1;
+            }
+        }
+    }
+
+    BenchmarkArgs benchArgs;
+    parseBenchmarkArgs(argc, argv, benchArgs);
+
     NFD::Guard nfdGuard;
 
     glfwSetErrorCallback(errorCB);
@@ -182,8 +207,11 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_VISIBLE, benchArgs.enabled ? GLFW_FALSE : GLFW_TRUE);
 
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "Thesis", nullptr, nullptr);
+    const int initW = benchArgs.enabled ? benchArgs.width : static_cast<int>(WINDOW_WIDTH);
+    const int initH = benchArgs.enabled ? benchArgs.height : static_cast<int>(WINDOW_HEIGHT);
+    GLFWwindow* window = glfwCreateWindow(initW, initH, "Thesis", nullptr, nullptr);
     if (!window) { glfwTerminate(); return 1; }
 
     glfwMakeContextCurrent(window);
@@ -201,7 +229,7 @@ int main()
     CameraConfig cfg;
     cfg.yaw    = glm::radians(90.f);
     cfg.radius = 3.f;
-    Camera camera(WINDOW_WIDTH, WINDOW_HEIGHT, cfg);
+    Camera camera(initW, initH, cfg);
 
     // Input — set callbacks before ImGui so ImGui chains to ours
     AppState state{ &camera };
@@ -231,6 +259,7 @@ int main()
     double prevTime = glfwGetTime();
     float  fps      = 0.f;
 
+    int exitCode = 0;
     try
     {
     Shader splatShader("shaders/splat.vert", "shaders/splat.frag");
@@ -244,6 +273,15 @@ int main()
     GpuTimer gpuTimer;
     GpuTimer sortGpuTimer;
     state.renderer = &renderer;
+
+    if (benchArgs.enabled)
+    {
+        BenchmarkShaders bshaders{ splatShader, computeShader, gatherShader, histogramShader,
+            scanWorkgroupsShader, scanBinsShader, scatterShader };
+        exitCode = runBenchmark(window, renderer, camera, bshaders, benchArgs);
+    }
+    else
+    {
     state.presets = loadPresets(state.presetsPath);
     if (loadSceneFromPath(state, "resources/bonsai.ply"))
         std::cout << "Loaded " << state.splatCount << " splats\n";
@@ -584,10 +622,12 @@ int main()
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);
     }
+    } // end interactive branch (else)
     }
     catch (const std::exception& e)
     {
         std::cerr << "Fatal error: " << e.what() << "\n";
+        exitCode = 1;
     }
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -595,5 +635,5 @@ int main()
     ImGui::DestroyContext();
     glfwDestroyWindow(window);
     glfwTerminate();
-    return 0;
+    return exitCode;
 }
