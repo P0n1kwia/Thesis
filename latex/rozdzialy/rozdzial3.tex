@@ -1,0 +1,400 @@
+% !TEX root = ../main.tex
+\chapter{Projekt systemu}
+\label{chap:projekt_systemu}
+Rozdział 2 opisywał narzędzia, z których został zbudowany system. Ten rozdział odpowie na pytanie, jak został zaprojektowany ten system: definiuje zakres systemu, wymagania funkcjonalne i pozafunkcjonalne, strukturę, model danych i przebieg potoku renderowania. Szczegóły implementacyjne (kod, shadery, struktury pomocnicze) omówiono w rozdziale czwartym, a analizę i weryfikację w rozdziale piątym.
+
+\section{Założenia i zakres systemu}
+\label{sec:zalozenia}
+Dzięki analizie istniejących rozwiązań (tabela \ref{tab:porownanie}) wynika, że żadna implementacja nie łączy jednocześnie trzech cech: niezależności od CUDA, warstwy analitycznej i interfejsu, który nie wymaga od użytkownika modyfikowania kodu. Zaprojektowany system wypełnia tę lukę.
+\begin{enumerate}
+    \item System służy do przeglądania wytrenowanej sceny 3DGS, a nie jest narzędziem do trenowania. Jako wejście przyjmuje gotowy plik \texttt{.ply}, wytworzony przez zewnętrzny model.
+    \item Cały potok potrzebny do renderowania sceny korzysta wyłącznie z mechanizmów OpenGL 4.3 Core, bez dodatkowych zależności od bibliotek producenta kart graficznych.
+    \item Obraz musi powstać w czasie rzeczywistym, a zmiana parametrów renderowania musi być widoczna natychmiast bez ponownego wczytania sceny.
+    \item Każda funkcja analityczna jest dostępna z poziomu interfejsu graficznego. Użytkownik nie edytuje plików konfiguracyjnych ani kodu źródłowego.
+    \item System musi umożliwiać powtarzalny pomiar wydajności, co ma służyć do porównania różnych wariantów.
+\end{enumerate}
+Poza zakresem systemu pozostawiono świadomie dwa obszary. Po pierwsze \texttt{edycja sceny} (selekcje, maski, usuwanie fragmentów), obszar, w którym \texttt{SuperSplat} jest dojrzałym narzędziem i w którym ta praca inżynierska nie wniosłaby nowej wartości. Po drugie: obsługa formatów skompresowanych (\texttt{.splat, .ksplat, .sogs}), system czyta wyłącznie format \texttt{.ply}.
+\section{Wymagania funkcjonalne}
+\label{sec:funkcjonalne}
+Wymagania funkcjonalne zostały zebrane w tabeli \ref{tab:wf}. Każdemu nadano identyfikator \texttt{WF-xx}, do którego odwołują się kolejne rozdziały. Do każdego wymagania zastosowano trzystopniową skalę: K - wymagania krytyczne, bez którego system nie spełnia swojego celu, W - wymagania ważne, stanowiące o przewadze nad narzędziami przeanalizowanymi w rozdziale pierwszym, D - wymagania dodatkowe.
+\begin{table}[htbp]
+  \centering
+  \caption{Wymagania funkcjonalne systemu}
+  \label{tab:wf}
+  \small
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabularx}{\textwidth}{
+      >{\raggedright\arraybackslash}p{0.075\textwidth}
+      >{\raggedright\arraybackslash}X
+      >{\centering\arraybackslash}p{0.075\textwidth}}
+    \toprule
+    \textbf{Id.} & \textbf{Opis wymagania} & \textbf{Prio.} \\
+    \midrule
+    WF-01 & Użytkownik może wczytać scenę z pliku \texttt{.ply} na trzy
+            sposoby: przez systemowe okno wyboru pliku, przez upuszczenie
+            pliku na okno aplikacji oraz przez argument wiersza poleceń. & K \\
+    WF-02 & System obsługuje pliki różniące się liczbą zapisanych
+            współczynników harmonik sferycznych; brak właściwości
+            opcjonalnych nie przerywa wczytywania. & K \\
+    WF-03 & Nieudane wczytanie pliku kończy się czytelnym komunikatem
+            w interfejsie, bez zamknięcia aplikacji i bez utraty sceny
+            wczytanej wcześniej. & W \\
+    WF-04 & Użytkownik nawiguje po scenie kamerą orbitalną: obrót wokół
+            punktu docelowego, przesunięcie punktu docelowego oraz
+            przybliżanie. & K \\
+    WF-05 & Użytkownik może zapisać bieżące ustawienie kamery pod własną
+            nazwą, przywrócić je i sunąć; zbiór ustawień jest trwały
+            między uruchomieniami. & W \\
+    WF-06 & System renderuje scenę wczasie rzeczywistym, komponując splaty
+            w kolejności od najdalszego do najbliższego. & K \\
+    WF-07 & Użytkownik może zmieniać parametry renderowania: próg
+            nieprzezroczystości, mnożnik skali, wielkość dylatacji
+            ekranowej, maksymalny promień splatu oraz stopień
+            wykorzystywanych harmonik sferycznych. & K \\
+    WF-08 & Użytkownik może przełączać tryby wizualizacji: barwa,
+            głębokość, nieprzezroczystość, przerysowanie, kontur elipsy
+            oraz identyfikator splatu. & W \\
+    WF-09 & System umożliwia jednoczesne porównanie dwóch trybów
+            wizualizacji w trybie podzielonego ekranu. & D \\
+    WF-10 & System prezentuje statystyki czasu rzeczywistego: liczbę klatek
+            na sekundę wraz z wykresem historii, czas klatki, czas
+            sortowania mierzony na procesorze i na karcie graficznej, czas
+            pracy GPU, liczbę splatów wczytanych i rysowanych oraz
+            szacowane zajęcie pamięci karty. & K \\
+    WF-11 & System prezentuje histogramy właściwości splatów aktualnie
+            widocznych: nieprzezroczystości, skali oraz rozmiaru
+            rzutowanej elipsy w pikselach. & W \\
+    WF-12 & Użytkownik może w trakcie działania przełączać metodę
+            sortowania między wariantem procesorowym a wariantem
+            realizowanym na karcie graficznej. & W \\
+    WF-13 & Użytkownik może uruchomić z interfejsu testy poprawności
+            sortowania na karcie graficznej, w tym porównanie wyniku
+            z wynikiem procesora. & D \\
+    WF-14 & Użytkownik może zapisać bieżącą klatkę do pliku PNG. & W \\
+    WF-15 & System udostępnia tryb wsadowy, w którym renderuje zadaną
+            liczbę klatek wzdłuż trajektorii kamery wczytanej z pliku
+            i zapisuje wyniki pomiarów do pliku CSV. & W \\
+    WF-16 & System udostępnia tryb porównania dwóch obrazów, wyznaczający
+            miary PSNR oraz SSIM. & D \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+Wymagania WF-10 do WF-13 oraz WF16, WF17 odpowiadają za część której brakuje w narzędzniach niezależnych od CUDA. 
+
+\section{Wymagania pozafunkcjonalne}
+\label{sec:pozafunkcjonalne}
+\begin{table}[htbp]
+  \centering
+  \caption{Wymagania pozafunkcjonalne systemu}
+  \label{tab:wn}
+  \small
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabularx}{\textwidth}{
+      >{\raggedright\arraybackslash}p{0.075\textwidth}
+      >{\raggedright\arraybackslash}p{0.2\textwidth}
+      >{\raggedright\arraybackslash}X}
+    \toprule
+    \textbf{Id.} & \textbf{Kategoria} & \textbf{Opis} \\
+    \midrule
+    WN-01 & Niezależność technologiczna & Potok renderowania korzysta
+            wyłącznie z mechanizmów rdzenia OpenGL 4.3 Core; system działa
+            na kartach graficznych różnych producentów. \\
+    WN-02 & Przenośność & Kod źródłowy kompiluje się i działa w systemach
+            Windows oraz Linux; zależności zewnętrzne są pobierane
+            i budowane automatycznie. \\
+    WN-03 & Wydajność & Dla sceny rzędu miliona splatów przy rozdzielczości
+            1280$\times$720 system utrzymuje płynność pracy interaktywnej,
+            a sortowanie nie jest dominującym składnikiem czasu klatki. \\
+    WN-04 & Skalowanie pamięci & Zapotrzebowanie na pamięć karty graficznej
+            rośnie liniowo z liczbą splatów, a jego oszacowanie jest
+            prezentowane użytkownikowi przed wystąpieniem braku pamięci. \\
+    WN-05 & Powtarzalność pomiarów & Tryb wsadowy używa dokładnie tego
+            samego potoku co tryb interaktywny i deterministycznej
+            trajektorii kamery, więc wyniki dwóch przebiegów są
+            porównywalne. \\
+    WN-06 & Odporność & Błędne lub niekompletne dane wejściowe nie powodują
+            przerwania działania programu. \\
+    WN-07 & Powtarzalność budowania & Wersje zależności są zadeklarowane
+            w opisie projektu, a loader funkcji OpenGL jest generowany
+            w trakcie konfiguracji, nie przechowywany w repozytorium. \\
+    WN-08 & Rozszerzalność & Dodanie nowego etapu obliczeniowego sprowadza
+            się do dodania shadera i bufora, bez zmian w pozostałych
+            etapach potoku. \\
+    WN-09 & Ergonomia & Wszystkie funkcje systemu są dostępne z jednego
+            panelu interfejsu; obsługa nie wymaga znajomości kodu ani
+            edycji plików konfiguracyjnych. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+Wymaganie WN-03 zostało celowo sformułowane jakościowo. Konkretne progi zależą od karty graficznej i rozmiaru sceny. Dlatego zostało przyjęte kryterium akceptacji, które stanowi wynik pomiarów przedstawionych w rozdziale piątym, wykonanych w opisanym tam środowisku i na wskazanych scenach.
+
+\section{Architektura logiczna systemu}
+\label{sec:architektura}
+
+System zaprojektowano jako aplikację jednowątkową z jedną pętlą główną. Całą pracę, którą warto zrównoleglić wykonuje GPU. Jest to m.in. sortowanie po głębokości, obliczanie parametrów Gaussianów. Wykonując te operacje na karcie graficznej przyśpieszamy renderowanie aplikacji, ponieważ eliminuje potrzebę przesyłania danych między RAM a VRAM. Aplikacja została podzielona na siedem modułów, z czego opis każdego modułu znajduje się poniżej.
+\begin{table}[htbp]
+  \centering
+  \caption{Moduły systemu i ich odpowiedzialności}
+  \label{tab:moduly}
+  \small
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabularx}{\textwidth}{
+      >{\raggedright\arraybackslash}p{0.24\textwidth}
+      >{\raggedright\arraybackslash}X}
+    \toprule
+    \textbf{Moduł} & \textbf{Odpowiedzialność} \\
+    \midrule
+    Warstwa aplikacji & Utworzenie okna i kontekstu graficznego, pętla
+      główna, obsługa zdarzeń wejściowych, sekwencjonowanie etapów klatki,
+      przechowywanie stanu aplikacji. \\
+    Kamera & Reprezentacja położenia obserwatora we współrzędnych
+      sferycznych, wyznaczanie macierzy widoku i projekcji, reakcja na
+      zdarzenia myszy, sygnalizowanie potrzeby ponownego sortowania. \\
+    Wczytywanie sceny & Odczyt pliku \texttt{.ply}, dekodowanie parametrów
+      Gaussianów (funkcje aktywacji), zbudowanie tablicy struktur splatów
+      w pamięci operacyjnej. \\
+    Renderer & Zarządzanie buforami karty graficznej, przesłanie sceny,
+      sterowanie etapem przetwarzania wstępnego, sortowanie w dwóch
+      wariantach, wywołanie rysowania, udostępnianie statystyk. \\
+    Warstwa shaderów & Kompilacja i konsolidacja programów shaderowych,
+      przekazywanie zmiennych jednorodnych; programy obliczeniowe
+      (przetwarzanie wstępne i sortowanie pozycyjne) oraz para programów
+      graficznych (wierzchołków i fragmentów). \\
+    Interfejs i analityka & Panel sterowania, prezentacja statystyk,
+      histogramy właściwości splatów widocznych, przełączanie trybów
+      wizualizacji. \\
+    Moduł pomiarowy & Pomiar czasu po stronie karty graficznej, tryb
+      wsadowy, wczytywanie trajektorii kamery, zrzuty ekranu, porównanie
+      obrazów miarami PSNR i SSIM. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+Zależności między modułami są jednokierunkowe (wynik jednego modułu przekazywany jest dalej), lecz żaden z modułów niższych nie zna warstwy aplikacji ani interfejsu.
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.8\textwidth]{rys_komponenty}
+  \caption{Diagram komponentów systemu; strzałki oznaczają kierunek zależności}
+  \label{rys:komponenty}
+\end{figure}
+
+\section{Model danych}
+\label{sec:model}
+\subsection{Reprezentacja splatu w pamięci}
+\label{subsec:struktura}
+Pojedyńczy Gaussian został opisany strukturą w C++. Jest to struktura o stałym rozmiarze, zawierająca 59 liczb zmiennoprzecinkowych co daje 236 bajtów na splat. Układ pół przedstawia poniższa tabela \ref{tab:splat}.
+\begin{table}[htbp]
+  \centering
+  \caption{Układ pól struktury opisującej pojedynczy splat}
+  \label{tab:splat}
+  \small
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabularx}{\textwidth}{
+      >{\raggedright\arraybackslash}p{0.2\textwidth}
+      >{\centering\arraybackslash}p{0.11\textwidth}
+      >{\centering\arraybackslash}p{0.11\textwidth}
+      >{\raggedright\arraybackslash}X}
+    \toprule
+    \textbf{Pole} & \textbf{Liczby} & \textbf{Bajty} & \textbf{Znaczenie} \\
+    \midrule
+    Pozycja        & 3  & 12  & środek Gaussiana w przestrzeni sceny \\
+    Składowa DC    & 3  & 12  & barwa niezależna od kierunku patrzenia \\
+    Nieprzezroczystość & 1  & 4   & wartość $\alpha$ po funkcji sigmoidalnej \\
+    Skala          & 3  & 12  & odchylenia wzdłuż osi własnych elipsoidy \\
+    Kwaternion     & 4  & 16  & orientacja elipsoidy \\
+    Pozostałe SH   & 45 & 180 & współczynniki pasm 1--3 harmonik sferycznych \\
+    \midrule
+    \textbf{Razem} & \textbf{59} & \textbf{236} & \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+\subsection{Podział pamięci między procesor a kartę graficzną}
+\label{gpudata}
+Każda scena istnieje w dwóch kopiach: w pamięci operacyjnej, gdzie jest wykorzysytwana do sortowania na CPU i analizie danych, oraz w pamięci karty graficznej, gdzie jest źródłem danych dla wszystkich etapów potoku graficznego. W projekcie występuje jedenaście buforów typu SSBO, przypisanych do stałych punktów dowiązania (tabela \ref{tab:bufory})
+\begin{table}[htbp]
+  \centering
+  \caption{Bufory danych w pamięci karty graficznej}
+  \label{tab:bufory}
+  \small
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabularx}{\textwidth}{
+      >{\raggedright\arraybackslash}p{0.26\textwidth}
+      >{\raggedright\arraybackslash}p{0.16\textwidth}
+      >{\raggedright\arraybackslash}X}
+    \toprule
+    \textbf{Bufor} & \textbf{Rozmiar} & \textbf{Rola} \\
+    \midrule
+    Splaty & $236N$ B & niezmienna kopia sceny \\
+    Wyniki przetwarzania & $48N$ B & rzutowany środek, odwrócona kowariancja
+      2D, barwa, rozmiar ekranowy \\
+    Indeksy rysowania & $4N$ B & kolejność kompozycji \\
+    Indeksy widoczne & $4N$ B & lista splatów po odrzuceniu \\
+    Licznik widocznych & 4 B & wynik kompaktowania \\
+    Klucze A i B & $2\times4N$ B & klucze sortowania (bufory zamieniane
+      w kolejnych przebiegach) \\
+    Indeksy B & $4N$ B & bufor docelowy przestawiania \\
+    Histogramy grup & $64W$ B & liczności cyfr w grupach roboczych \\
+    Przesunięcia kubełków & 64 B & wynik sumowania prefiksowego \\
+    Licznik fragmentów & 4 B & pomiar przerysowania \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+Oznaczając przez $N$ liczbę spatów, a przez $W$ liczbę grup roboczych możemy oszacować całkowite zapotrzebowanie na pamięć karty graficznej (VRAM) przez wzór
+\begin{equation}
+    M(N) = 304\,N + 64\,W + \mathcal{0}(1) \ \ \text{[B]},
+    \label{eq:pamiec}
+\end{equation}
+Wychodzi to około 304 bajty na splat. Dla sceny miliona Gaussianów daje to w przybliżeniu 290 MiB, a dla sceny sześciomilionowej blisko 1,7 GiB. Stąd pojawia się wymaganie WN-04: użytkownik powinien poznać skalę zapotrzebowania przed próbą wczytania sceny której karta nie pomieści.
+
+\section{Projekt potoku renderowania}
+\label{sec:pipeline}
+\subsection{Przebieg pojedynczej klatki}
+\label{subsec:klatka}
+Potok zaprojektowano jako sekwencję sześciu etapów, z których dwa są warunkowe (rysunek \ref{rys:przeplyw}).
+\begin{enumerate}
+    \item \textbf{Obsługa wejścia i aktualizacja kamery.} Akcje myszy przeliczane są na zmianę kątów, punktu docelowego lub promienia. Macierz widoku jest przeliczana leniwie - wyłącznie wtedy, gdy któryś z paramertów uległ zmianie.
+    \item \textbf{Przetwarzanie wstępne.} Dla każdego splatu wyznaczane są: macierz kowariancji 3D z rozkładu na skalę i rotację, jej rzut na płaszczyznę ekranu, barwa z harmonik sferycznych dla bieżącego kierunku patrzenia, głębokość oraz rozmiar elipsy w pikselach. Na tym samym etapie zostają odrzucone  splaty poza polem widzenia i poniżej progu przeźroczystości, a te które zostaną, są dodawane do ciągłej listy indeksów.
+    \item \textbf{Sortowanie.} Widoczne splaty są porządkowane w porządku malejącym ze względu na głębokość. Sortowanie następuje tylko wtedy gdy zmienimy pozycję w scenie jedną z dwóch metod opisanych w podrozdziale 3.6.2.
+    \item \textbf{Rysowanie.} Wykorzystując instancing sprzętowy  powielamy pojedynczy czworobok tyle razy, ile jest splatów widocznych. Program wierzchołków \eng{Vertex Shader} rozciąga czworobok do rozmiaru elipsy, a program fragmentów \eng{Fragment Shader} wyznacza wartość gęstości Gaussiana w pikselu i wynikowe krycie.
+    \item \textbf{Kompozycja.} Fragmenty są mieszane operatorem "over" z krycia przemnożonego, przy wyłączonym teście głębokości.
+    \item \textbf{Interfejs i analityka.} Panel sterowania oraz wykresy są rysowane na wierzchu obrazu sceny w tym samym kontekście OpenGL.
+\end{enumerate}
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\textwidth]{rys_przeplyw}
+  \caption{Przepływ danych podczas renderowania pojedynczej klatki}
+  \label{rys:przeplyw}
+\end{figure}
+Istotnym elementem projektu jest warunkowość etapów 2 i 3. Wyniki przetwarzania wstępnego zależą wyłącznie od macierzy widoku, projekcji, położenia kamery, rozmiaru okna oraz zestawu parametrów renderowania. Jeśli żadna z tych wartości się nie zmieni, otrzymamy ten sam wynik. Analogicznie to działa dla etapu sortowania: dopóty, dopóki kamera nie przemieści się na tyle, by zmieniła się głębokość splatów. Należy wspomnić że ponowne sortowanie wyzwalane jest tylko, gdy obserwator (kamera) przesunie się o więcej niż 0,2\% bieżącego promienia orbity, stąd wynika, że próg ten jest proporcjonalny do promienia, a nie jest stały.
+
+\subsection{Projekt dwóch ścieżek sortowania}
+\label{subsec:sortowanie}
+Kompozycja Gaussianów jest operacją zależną od kolejności dlatego tak istotne jest zaimplementowanie wydajnego sortowania. W projekcie zaimplementowane są dwie ścieżki, między którymi można się przełączać w czasie działania programu:
+\begin{itemize}
+    \item \textbf{ścieżka CPU} - sortowanie przez porównania biblioteki standardowej wykonywane na tablicy indeksów i tablicy głębokości w pamięci RAM.
+    \item \textbf{ścieżka GPU} - sortowanie pozycyjne \eng{radix sort} w wariancie od najmłodszej cyfry, zrealizowane w czterech shaderach obliczeniowych (wyznaczanie kluczy, histogram, sumowanie prefiksowe \eng{prefix sum}, przestawianie) i przebiegające bez opuszczania VRAM (wszystkie dane są od początku w pamięci karty graficznej)
+\end{itemize}
+Ścieżka GPU zawsze jest bardziej wydajna niż na CPU, jednak została ona zachowana, żeby można było porównać wydajność tych dwóch podejść. Sortowanie na CPU było łatwiejsze w implementacji, jednak różnica czasu przemawia na korzyść sortowania na GPU. Możliwość przełączania istnieje w aplikacji bez potrzeby ponownego uruchamiania aplikacji, co sprawia, że oba warianty porównywane są w tym samym środowisku.
+Kluczem sortowania jest 32-bitowa liczba całkowita wyprowadzona z głębokości splatu w przestrzeni kamery. Dzięki odwzorowaniu zachowującemu porządek, porównywanie kluczy całkowitych da ten sam wynik co porównywanie liczb zmiennoprzecinkowych, lecz w kolejności od najdalszego do najbliższego. Sortowanie pozycyjne z natury porządkuje liczby rosnąco i operuje na liczbach bez znaku, co sprawia, że nie musimy użyć dodatkowego przebiegu odwracającego wynik. Zostały przyjęte cyfry czterobitowe, co daje szesnaście kubełków i osiem przebiegów na pełny klucz.
+\subsection{Decyzja o modelu rasteryzacji}
+\label{subsec:raster}
+W zaprojektowanym systemie przyjęto, że każdy splat generuje własny czworobok, opisując jego elipsę, a sortowanie jest globalne. Jest to różnica między implementacją oryginalną, gdzie ekran jest podzielony na kafle i dla każdego kafla buduje się listę przecinających go Gaussianów, które są sortowane lokalnie. Podejście przedstawione w tym projekcie jest łatwiejsze i wpisuje się w sprzętowy potok rasteryzacji, nie wymaga budowania struktur pośrednich i nie wymaga mechanizmów, których OpenGL 4.3 Core nie udostępnia w wygodnej postaci.
+Kosztem takiej decyzji jest przerysowanie: fragmenty odrzucane w programie fragmentów są mimo wszystko rasteryzowane. Ponieważ jest to główne ograniczenie przyjętego modelu, stworzono dwa mechanizmy pozwalające je zmierzyć(WF-08, WF-11). Parametr maksymalnego promienia splatu (WF-07) pozwala z kolei ograniczyć wpływ bardzo dużych elips.
+\section{Projekt interfejsu użytkownika}
+\label{sec:gui}
+Interfejs został zbudowany jako jeden panel złożony z pięciu zwijanych sekcji co odpowiada wymaganiu WN-09. Każda z sekcji mówi o czymś innym:
+\begin{itemize}
+    \item \textbf{Scena} - zawiera nazwę pliku, liczbę splatów, szacowane zajęcie pamięci karty graficznej, przycisk wyboru pliku, komunikat o błędzie wczytywania, przycisk do zrzutu ekranu.
+    \item \textbf{Ustawienia kamery} - zapis, przywracanie i usuwanie nazwanych ustawień.
+    \item \textbf{Renderowanie} - zawiera suwaki parametrów potoku renderowania wraz z podpowiedziami.
+    \item \textbf{Widok} - Wybór trybu wizualizacji oraz przełącznik podzielonego ekranu.
+    \item \textbf{Statystyki} - licznik czasu, wybór metody sortowania, przyciski testów poprawności.
+    \item \textbf{Analiza} - histogramy właściwości widocznych splatów.
+\end{itemize}
+Histogramy dotyczą tylko tych splatów, które są aktualnie widoczne, a więc zbioru zmieniającego się z każdym ruchem kamery. Przeliczanie setki parametrów w każdej klatce obciążyłoby system. Żeby temu zaradzić użytkownik sam decyduje, kiedy pobrać dane z karty graficznej i przeliczyć rozkłady. Wykres historii liczby klatek na sekundę pozostaje ciągły.
+Sterowanie kamerą orbitalną oparto na trzech gestach myszy - przeciąganie lewym przyciskiem (obracanie), przeciąganie prawym przyciskiem (przesuwanie) i obracanie kółkiem (przybliżanie). Przybliżanie jest proporcjonalne do bieżącej odległości od sceny, co daje podobny efekt wizualny niezależnie od tego, czy obserwator ogląda scenę z dystansu, czy bada jej fragment z bliska.
+
+\section{Projekt modułu pomiarowego}
+\label{sec:measure}
+Wymaganie WN-05 (powtarzalność pomiarów) nie daje się spełnić w trybie interaktywnym: wyniki jakie otrzymamy przy ręcznym poruszaniu kamerą nie są porównywalne między wariantami potoku, ponieważ nie da się powtórzyć tej samej trajektorii. Zaprojektowano więc mechanizm uruchamiany z wiersza poleceń oparty na trzech elementach. 
+
+Pierwszym jest deterministyczna trajektori kamery, zapisana w pliku tekstowym jako ciąg klatek pośrednich. Położenie obserwatora w klatce pośredniej powstaje poprzez interpolację między sąsiednimi klatkami kluczowymi. Ten sam plik da za każdym razem tę samą sekwencję widoków.
+
+Drugim jest pomiar czasu po stronie GPU. Czas mierzony zegarem procesora obejmowałby tylko czas zlecenia pracy, a nie jej wykonania, bo zadania graficzne są wykonywane asynchronicznie. Zaprojektowano pomiar oparty na zapytaniach karty graficznej, z jawną synchronizacją na końcu klatki w trybie wsadowym oraz z odczytem opóźnionym w trybie interaktywnym.
+
+Trzecim jest \textbf{raport w formacie CSV}: jeden wiersz na klatkę,
+zawierający numer klatki, czas całkowity, czas sortowania, czas pracy karty
+graficznej, liczbę splatów widocznych oraz liczbę wygenerowanych fragmentów,
+a na końcu wiersze podsumowania z wartością średnią, medianą i percentylem
+99. Wybór formatu tekstowego jest celowy  -  wyniki trafiają wprost do
+narzędzia arkuszowego, a plik pozostaje czytelny w postaci źródłowej.
+ 
+Oddzielnym zagadnieniem jest weryfikacja \textbf{poprawności wizualnej}.
+Ponieważ system jest samodzielną implementacją metody opisanej w pracy
+oryginalnej, potrzebna jest miara odchylenia od obrazu odniesienia.
+Zaprojektowano tryb porównania dwóch obrazów, wyznaczający szczytowy stosunek
+sygnału do szumu \eng{peak signal-to-noise ratio} oraz wskaźnik podobieństwa
+strukturalnego \eng{structural similarity index}. Pierwsza miara wykrywa
+różnice punktowe, druga  -  różnice w strukturze obrazu, bliższe percepcji
+obserwatora. W połączeniu ze zrzutem klatki o zadanym numerze, wykonywanym
+w trybie wsadowym, pozwala to porównywać obrazy pochodzące dokładnie z tej
+samej pozycji kamery.
+ 
+\section{Zestawienie decyzji projektowych}
+\label{sec:decyzje}
+ 
+Tabela \ref{tab:decyzje} zbiera najważniejsze decyzje podjęte na etapie
+projektowania wraz z rozważaną alternatywą i ceną, jaką za każdą z nich
+zapłacono. Jawne wskazanie kosztu jest tu równie istotne jak uzasadnienie:
+każda z tych decyzji zawęża możliwości systemu w konkretny, dający się
+wskazać sposób.
+ 
+\begin{table}[htbp]
+  \centering
+  \caption{Kluczowe decyzje projektowe}
+  \label{tab:decyzje}
+  \small
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabularx}{\textwidth}{
+      >{\raggedright\arraybackslash}p{0.2\textwidth}
+      >{\raggedright\arraybackslash}X
+      >{\raggedright\arraybackslash}X}
+    \toprule
+    \textbf{Decyzja} & \textbf{Uzasadnienie} & \textbf{Koszt} \\
+    \midrule
+    Billboardy z instancingiem zamiast rasteryzacji kafelkowej &
+      Bezpośrednie wykorzystanie sprzętowego potoku rasteryzacji, brak
+      struktur pośrednich, realizowalne w rdzeniu OpenGL 4.3 &
+      Przerysowanie rosnące z rozmiarem elips; brak przycinania splatów do
+      kafli \\
+    Sortowanie globalne zamiast lokalnego w kaflach &
+      Jeden porządek dla całej sceny, prostsza weryfikacja poprawności &
+      Sortowany jest cały zbiór widoczny, także gdy zmiana dotyczy
+      fragmentu obrazu \\
+    Dwie współistniejące ścieżki sortowania &
+      Wariant procesorowy jako wzorzec poprawności, różnica czasów jako
+      materiał pomiarowy &
+      Podwojony kod ścieżki sortowania i dodatkowe bufory \\
+    Przetwarzanie wstępne na karcie graficznej &
+      Zrównoleglenie operacji wykonywanej dla każdego splatu; uniknięcie
+      przesyłania wyników przez magistralę &
+      Trudniejsze diagnozowanie błędów niż w kodzie procesora \\
+    Odczyt liczby splatów widocznych do pamięci operacyjnej &
+      Umożliwia sterowanie rysowaniem i analitykę po stronie procesora &
+      Synchronizacja potoku przy każdym ruchu kamery \\
+    Kamera wyłącznie orbitalna &
+      Zgodność z konwencją narzędzi do oglądania obiektów; prostsze
+      i odporniejsze sterowanie &
+      Brak swobodnego przelotu przez wnętrze sceny \\
+    Aplikacja jednowątkowa po stronie procesora &
+      Praca warta zrównoleglenia trafia na kartę graficzną; brak klasy
+      błędów synchronizacji &
+      Wczytywanie sceny blokuje interfejs \\
+    Wyłącznie format \texttt{.ply} &
+      Zgodność z implementacją referencyjną, brak warstwy dekompresji &
+      Brak obsługi formatów skompresowanych, większe pliki wejściowe \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+ 
+\section{Podsumowanie rozdziału}
+\label{sec:podsumowanie3}
+ 
+W rozdziale przedstawiono projekt systemu wizualizacji scen 3DGS:
+szesnaście wymagań funkcjonalnych i dziewięć pozafunkcjonalnych, podział na
+siedem modułów o jednokierunkowych zależnościach, model danych oparty na
+strukturze 236 bajtów na splat i jedenastu buforach karty graficznej,
+sześcioetapowy potok renderowania z dwoma etapami warunkowymi oraz projekt
+warstwy pomiarowej zapewniającej powtarzalność wyników.
+ 
+Przyjęte rozwiązania wynikają wprost z luki wskazanej w rozdziale
+pierwszym. Niezależność od CUDA jest konsekwencją oparcia całego potoku na
+rdzeniu OpenGL 4.3 (WN-01); warstwa analityczna, której brakuje narzędziom
+spoza ekosystemu NVIDIA, została zaprojektowana jako zestaw wymagań
+WF-08--WF-11; ergonomia, słaba strona narzędzi analitycznych, jest
+przedmiotem wymagania WN-09 i projektu interfejsu z podrozdziału \ref{sec:gui}.
+ 
+Sposób realizacji poszczególnych wymagań  -  struktury danych, programy
+shaderowe i algorytmy  -  opisano w rozdziale następnym. Weryfikację
+wymagań wydajnościowych oraz poprawności wizualnej, wykonaną narzędziami
+zaprojektowanymi w podrozdziale \ref{sec:measure}, przedstawiono
+w rozdziale poświęconym wynikom testów.

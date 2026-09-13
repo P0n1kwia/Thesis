@@ -1,0 +1,50 @@
+---
+config:
+  layout: elk
+  elk:
+    mergeEdges: false
+  theme: neutral
+  flowchart:
+    htmlLabels: false
+    curve: linear
+    nodeSpacing: 40
+    rankSpacing: 40
+---
+flowchart TB
+
+  WE(["Wejście<br/>(mysz, klawiatura)"])
+  KAM["Kamera<br/>(macierze widoku i rzutowania)"]
+  D1{"Stan<br/>zmieniony?"}
+
+  subgraph PRE["Przetwarzanie wstępne (shadery obliczeniowe)"]
+    direction LR
+    P1["Kowariancja 2D"]
+    P2["Barwa z harmonik sferycznych"]
+    P3["Głębokość"]
+    P4["Odrzucanie<br/>(poza bryłą widzenia, poniżej progu)"]
+    P5["Kompaktowanie<br/>(lista widocznych splatów)"]
+    P1 --> P2 --> P3 --> P4 --> P5
+  end
+
+  D2{"Potrzebne<br/>sortowanie?"}
+  SORT["Sortowanie według głębokości<br/>(CPU albo GPU)"]
+  RYS["Rysowanie instancingiem<br/>(czworokąt na splat)"]
+  KOMP["Kompozycja &quot;over&quot;<br/>(od najdalszego do najbliższego)"]
+  UI["Interfejs i analityka<br/>(ImGui, ImPlot)"]
+  FB(["Bufor ramki"])
+
+  WE --> KAM --> D1
+  D1 -- "tak" --> PRE
+  D1 -- "nie" --> D2
+  PRE --> D2
+  D2 -- "tak" --> SORT --> RYS
+  D2 -- "nie" --> RYS
+  RYS --> KOMP --> UI --> FB
+
+  classDef krok fill:#ffffff,stroke:#333,stroke-width:1px,color:#111
+  classDef war fill:#f2f2f2,stroke:#444,stroke-width:1px,color:#111
+  classDef io fill:#e8e8e8,stroke:#333,stroke-width:1px,color:#111
+  class KAM,SORT,RYS,KOMP,UI,P1,P2,P3,P4,P5 krok
+  class D1,D2 war
+  class WE,FB io
+  style PRE fill:#fafafa,stroke:#555,stroke-width:1px,color:#111

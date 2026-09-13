@@ -1,0 +1,63 @@
+---
+config:
+  layout: elk
+  elk:
+    mergeEdges: false
+    nodePlacementStrategy: BRANDES_KOEPF
+  theme: neutral
+  flowchart:
+    htmlLabels: false
+    nodeSpacing: 35
+    rankSpacing: 60
+---
+flowchart TB
+
+  subgraph APP["Warstwa aplikacji"]
+    direction LR
+    OKNO["Okno i kontekst<br/>OpenGL 4.3"]
+    PETLA["Pętla główna"]
+    STAN["Stan aplikacji<br/>(parametry renderowania)"]
+    PETLA --> OKNO
+    PETLA --> STAN
+  end
+
+  subgraph MODULY["Moduły funkcjonalne"]
+    direction LR
+    SCENA["Wczytywanie<br/>sceny (.ply)"]
+    KAM["Kamera"]
+    UI["Interfejs<br/>i analityka"]
+    POM["Moduł<br/>pomiarowy"]
+    UI --> POM
+  end
+
+  subgraph REND["Renderer"]
+    direction LR
+    PRE["Przetwarzanie<br/>wstępne"]
+    SORT["Sortowanie"]
+    RYS["Rysowanie"]
+    BUF["Bufory GPU"]
+    PRE --> SORT --> RYS
+    PRE --> BUF
+    SORT --> BUF
+    RYS --> BUF
+  end
+
+  SHAD["Warstwa shaderów (GLSL 430)"]
+
+  PETLA --> SCENA
+  PETLA --> KAM
+  PETLA --> UI
+  SCENA --> BUF
+  KAM --> PRE
+  POM --> RYS
+  PRE --> SHAD
+  SORT --> SHAD
+  RYS --> SHAD
+
+  classDef modul fill:#ffffff,stroke:#333,stroke-width:1px,color:#111
+  classDef app fill:#f2f2f2,stroke:#444,stroke-width:1px,color:#111
+  class PETLA,OKNO,STAN app
+  class SCENA,KAM,UI,POM,PRE,SORT,RYS,BUF,SHAD modul
+  style APP fill:#fafafa,stroke:#555,stroke-width:1px,color:#111
+  style MODULY fill:#fafafa,stroke:#555,stroke-width:1px,color:#111
+  style REND fill:#fafafa,stroke:#555,stroke-width:1px,color:#111
