@@ -66,6 +66,28 @@ std::vector<Splat> loadSplats(const std::string& path)
     auto b7 = tryGetProperty(plyData, "f_rest_36", n);
     auto b8 = tryGetProperty(plyData, "f_rest_37", n);
 
+    auto r9  = tryGetProperty(plyData, "f_rest_8", n);
+    auto r10 = tryGetProperty(plyData, "f_rest_9", n);
+    auto r11 = tryGetProperty(plyData, "f_rest_10", n);
+    auto r12 = tryGetProperty(plyData, "f_rest_11", n);
+    auto r13 = tryGetProperty(plyData, "f_rest_12", n);
+    auto r14 = tryGetProperty(plyData, "f_rest_13", n);
+    auto r15 = tryGetProperty(plyData, "f_rest_14", n);
+    auto g9  = tryGetProperty(plyData, "f_rest_23", n);
+    auto g10 = tryGetProperty(plyData, "f_rest_24", n);
+    auto g11 = tryGetProperty(plyData, "f_rest_25", n);
+    auto g12 = tryGetProperty(plyData, "f_rest_26", n);
+    auto g13 = tryGetProperty(plyData, "f_rest_27", n);
+    auto g14 = tryGetProperty(plyData, "f_rest_28", n);
+    auto g15 = tryGetProperty(plyData, "f_rest_29", n);
+    auto b9  = tryGetProperty(plyData, "f_rest_38", n);
+    auto b10 = tryGetProperty(plyData, "f_rest_39", n);
+    auto b11 = tryGetProperty(plyData, "f_rest_40", n);
+    auto b12 = tryGetProperty(plyData, "f_rest_41", n);
+    auto b13 = tryGetProperty(plyData, "f_rest_42", n);
+    auto b14 = tryGetProperty(plyData, "f_rest_43", n);
+    auto b15 = tryGetProperty(plyData, "f_rest_44", n);
+
     std::vector<Splat> splats(x.size());
     float SH_C0 = 0.28209479177f;
     for (size_t i = 0; i < x.size(); i++)
@@ -92,14 +114,13 @@ std::vector<Splat> loadSplats(const std::string& path)
         splats[i].quaternion[3] = q3[i]/len;
 
         splats[i].sh_rest[0] = r1[i];
-        splats[i].sh_rest[1] = r2[i];
-        splats[i].sh_rest[2] = r3[i];
-
-        splats[i].sh_rest[3] = g1[i];
+        splats[i].sh_rest[1] = g1[i];
+        splats[i].sh_rest[2] = b1[i];
+        splats[i].sh_rest[3] = r2[i];
         splats[i].sh_rest[4] = g2[i];
-        splats[i].sh_rest[5] = g3[i];
-        splats[i].sh_rest[6] = b1[i];
-        splats[i].sh_rest[7] = b2[i];
+        splats[i].sh_rest[5] = b2[i];
+        splats[i].sh_rest[6] = r3[i];
+        splats[i].sh_rest[7] = g3[i];
         splats[i].sh_rest[8] = b3[i];
 
         splats[i].sh_rest[9] = r4[i];
@@ -117,6 +138,28 @@ std::vector<Splat> loadSplats(const std::string& path)
         splats[i].sh_rest[21] = r8[i];
         splats[i].sh_rest[22] = g8[i];
         splats[i].sh_rest[23] = b8[i];
+
+        splats[i].sh_rest[24] = r9[i];
+        splats[i].sh_rest[25] = g9[i];
+        splats[i].sh_rest[26] = b9[i];
+        splats[i].sh_rest[27] = r10[i];
+        splats[i].sh_rest[28] = g10[i];
+        splats[i].sh_rest[29] = b10[i];
+        splats[i].sh_rest[30] = r11[i];
+        splats[i].sh_rest[31] = g11[i];
+        splats[i].sh_rest[32] = b11[i];
+        splats[i].sh_rest[33] = r12[i];
+        splats[i].sh_rest[34] = g12[i];
+        splats[i].sh_rest[35] = b12[i];
+        splats[i].sh_rest[36] = r13[i];
+        splats[i].sh_rest[37] = g13[i];
+        splats[i].sh_rest[38] = b13[i];
+        splats[i].sh_rest[39] = r14[i];
+        splats[i].sh_rest[40] = g14[i];
+        splats[i].sh_rest[41] = b14[i];
+        splats[i].sh_rest[42] = r15[i];
+        splats[i].sh_rest[43] = g15[i];
+        splats[i].sh_rest[44] = b15[i];
     }
     return splats;
 }

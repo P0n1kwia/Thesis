@@ -12,6 +12,9 @@ uniform float uNear;
 uniform float uFar;
 uniform float uViewportOffsetX; // current glViewport x, in framebuffer pixels
 uniform float uViewportScale;   // current viewport width / full uScreenSize.x
+uniform bool uCountFragments;   // benchmark instrumentation, off (0) by default
+
+layout(std430, binding = 10) buffer FragCounter { uint uFragCount; };
 
 out vec4 fragColor;
 
@@ -41,6 +44,8 @@ void main()
     }
 
     if (alpha < 0.0039) discard;
+
+    if (uCountFragments) atomicAdd(uFragCount, 1u);
 
     if (uDebugMode == 3)
     {

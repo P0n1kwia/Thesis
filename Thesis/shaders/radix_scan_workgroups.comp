@@ -1,0 +1,51 @@
+#version 430 core
+
+
+layout(local_size_x = 256) in;
+
+layout(std430, binding = 8) buffer WgHistograms { uint wgHistograms[]; };
+layout(std430, binding = 9) buffer BinOffsets   { uint binOffsets[]; };
+
+uniform uint uNumWorkgroups;
+uniform uint uMaxWorkgroups;
+
+shared uint temp[256];
+
+void main()
+{
+    uint digit = gl_WorkGroupID.x;
+    uint t = gl_LocalInvocationID.x;
+    uint base = digit * uMaxWorkgroups;
+
+    uint carry = 0u;
+    uint numChunks = (uNumWorkgroups + 255u) / 256u;
+    for (uint c = 0u; c < numChunks; ++c)
+    {
+        uint idx = c * 256u + t;
+
+        uint val = 0u;
+        if (idx < uNumWorkgroups) val = wgHistograms[base + idx];
+        temp[t] = val;
+        barrier();
+
+        for (uint offset = 1u; offset < 256u; offset <<= 1u)
+        {
+            uint prev = (t >= offset) ? temp[t - offset] : 0u;
+            barrier();
+            temp[t] += prev;
+            barrier();
+        }
+
+        uint inclusive = temp[t];
+        uint exclusive = inclusive - val;
+        if (idx < uNumWorkgroups)
+            wgHistograms[base + idx] = exclusive + carry;
+
+        uint chunkTotal = temp[255];
+        barrier(); 
+        carry += chunkTotal;
+    }
+
+    if (t == 0u)
+        binOffsets[digit] = carry; 
+}

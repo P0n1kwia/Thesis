@@ -56,13 +56,13 @@ FetchContent_Declare(
 FetchContent_Declare(
     happly
     GIT_REPOSITORY https://github.com/nmwsharp/happly.git
-    GIT_TAG        master
+    GIT_TAG        v1.1.0
     GIT_SHALLOW    TRUE
 )
 FetchContent_Declare(
     stb
     GIT_REPOSITORY https://github.com/nothings/stb.git
-    GIT_TAG        master
+    GIT_TAG        2c980bb59875b0d32144a71867fbdebb2f77cd20 # stb has no tagged releases; pinned to a specific commit
     GIT_SHALLOW    TRUE
 )
 

@@ -29,7 +29,16 @@ const float SH_C2[5] = float[5](
 	-1.0925484305920792,
 	0.5462742152960396
 );
-const uint SPLAT_STRIDE = 38u;
+const float SH_C3[7] = float[7](
+	-0.5900435899266435,
+	2.890611442640554,
+	-0.4570457994644658,
+	0.3731763325901154,
+	-0.4570457994644658,
+	1.445305721320277,
+	-0.5900435899266435
+);
+const uint SPLAT_STRIDE = 59u;
 
 bool insideFrustum(vec3 p, float radius)
 {
@@ -67,6 +76,14 @@ void main()
 	vec3  c6          = vec3(splatData[base + 29u], splatData[base + 30u], splatData[base + 31u]);
 	vec3  c7          = vec3(splatData[base + 32u], splatData[base + 33u], splatData[base + 34u]);
 	vec3  c8          = vec3(splatData[base + 35u], splatData[base + 36u], splatData[base + 37u]);
+
+	vec3  c9          = vec3(splatData[base + 38u], splatData[base + 39u], splatData[base + 40u]);
+	vec3  c10         = vec3(splatData[base + 41u], splatData[base + 42u], splatData[base + 43u]);
+	vec3  c11         = vec3(splatData[base + 44u], splatData[base + 45u], splatData[base + 46u]);
+	vec3  c12         = vec3(splatData[base + 47u], splatData[base + 48u], splatData[base + 49u]);
+	vec3  c13         = vec3(splatData[base + 50u], splatData[base + 51u], splatData[base + 52u]);
+	vec3  c14         = vec3(splatData[base + 53u], splatData[base + 54u], splatData[base + 55u]);
+	vec3  c15         = vec3(splatData[base + 56u], splatData[base + 57u], splatData[base + 58u]);
 	vec3 dir = normalize(worldPos - uCamPos);
 	float dx = dir.x, dy = dir.y, dz = dir.z;
 	float xx = dx * dx, yy = dy * dy, zz = dz * dz;
@@ -83,6 +100,16 @@ void main()
 		       + SH_C2[2] * (2.0 * zz - xx - yy) * c6
 		       + SH_C2[3] * xz * c7
 		       + SH_C2[4] * (xx - yy) * c8;
+	}
+	if (uSHDegree >= 3)
+	{
+		color += SH_C3[0] * dy * (3.0 * xx - yy) * c9
+		       + SH_C3[1] * dx * dy * dz * c10
+		       + SH_C3[2] * dy * (4.0 * zz - xx - yy) * c11
+		       + SH_C3[3] * dz * (2.0 * zz - 3.0 * xx - 3.0 * yy) * c12
+		       + SH_C3[4] * dx * (4.0 * zz - xx - yy) * c13
+		       + SH_C3[5] * dz * (xx - yy) * c14
+		       + SH_C3[6] * dx * (xx - 3.0 * yy) * c15;
 	}
 	color += 0.5f;
 	vec3 scaledAScale = aScale * uScaleMultiplier;

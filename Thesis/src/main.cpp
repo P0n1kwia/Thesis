@@ -21,6 +21,8 @@
 #include <gpu_timer.h>
 #include <screenshot.h>
 #include <camera_presets.h>
+#include <benchmark.h>
+#include <image_compare.h>
 #include <nfd.hpp>
 
 
@@ -72,7 +74,18 @@ struct AppState {
     float sortTimeMs = 0.f;
     float gpuTimeMs = 0.f;
 
+    float sortTimeGpuMs = 0.f;
+
     std::vector<float> extentHistogramData;
+
+    int gatherValidationStatus = -1;
+    int histogramScanValidationStatus = -1;
+    int scatterValidationStatus = -1;
+
+
+    int sortMethod = 1;
+    int cpuGpuCompareStatus = -1;
+    int monotonicCheckStatus = -1;
 };
 
 static bool hasPlyExtension(const std::string& path)
@@ -161,8 +174,31 @@ static void dropCB(GLFWwindow* w, int count, const char** paths)
     }
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    
+    for (int i = 1; i + 2 < argc; ++i)
+    {
+        if (std::string(argv[i]) == "--compare")
+        {
+            try
+            {
+                ImageCompareResult r = compareImages(argv[i + 1], argv[i + 2]);
+                std::cout << "PSNR: " << r.psnrDb << " dB\n";
+                std::cout << "SSIM: " << r.ssim << "  (" << r.width << "x" << r.height << ")\n";
+                return 0;
+            }
+            catch (const std::exception& e)
+            {
+                std::cerr << "Compare failed: " << e.what() << "\n";
+                return 1;
+            }
+        }
+    }
+
+    BenchmarkArgs benchArgs;
+    parseBenchmarkArgs(argc, argv, benchArgs);
+
     NFD::Guard nfdGuard;
 
     glfwSetErrorCallback(errorCB);
@@ -171,8 +207,11 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_VISIBLE, benchArgs.enabled ? GLFW_FALSE : GLFW_TRUE);
 
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "Thesis", nullptr, nullptr);
+    const int initW = benchArgs.enabled ? benchArgs.width : static_cast<int>(WINDOW_WIDTH);
+    const int initH = benchArgs.enabled ? benchArgs.height : static_cast<int>(WINDOW_HEIGHT);
+    GLFWwindow* window = glfwCreateWindow(initW, initH, "Thesis", nullptr, nullptr);
     if (!window) { glfwTerminate(); return 1; }
 
     glfwMakeContextCurrent(window);
@@ -190,7 +229,7 @@ int main()
     CameraConfig cfg;
     cfg.yaw    = glm::radians(90.f);
     cfg.radius = 3.f;
-    Camera camera(WINDOW_WIDTH, WINDOW_HEIGHT, cfg);
+    Camera camera(initW, initH, cfg);
 
     // Input — set callbacks before ImGui so ImGui chains to ours
     AppState state{ &camera };
@@ -220,13 +259,29 @@ int main()
     double prevTime = glfwGetTime();
     float  fps      = 0.f;
 
+    int exitCode = 0;
     try
     {
     Shader splatShader("shaders/splat.vert", "shaders/splat.frag");
     Shader computeShader(Shader::ComputeShader{}, "shaders/preprocessing.comp");
+    Shader gatherShader(Shader::ComputeShader{}, "shaders/radix_gather.comp");
+    Shader histogramShader(Shader::ComputeShader{}, "shaders/radix_histogram.comp");
+    Shader scanWorkgroupsShader(Shader::ComputeShader{}, "shaders/radix_scan_workgroups.comp");
+    Shader scanBinsShader(Shader::ComputeShader{}, "shaders/radix_scan_bins.comp");
+    Shader scatterShader(Shader::ComputeShader{}, "shaders/radix_scatter.comp");
     SplatRenderer renderer;
     GpuTimer gpuTimer;
+    GpuTimer sortGpuTimer;
     state.renderer = &renderer;
+
+    if (benchArgs.enabled)
+    {
+        BenchmarkShaders bshaders{ splatShader, computeShader, gatherShader, histogramShader,
+            scanWorkgroupsShader, scanBinsShader, scatterShader };
+        exitCode = runBenchmark(window, renderer, camera, bshaders, benchArgs);
+    }
+    else
+    {
     state.presets = loadPresets(state.presetsPath);
     if (loadSceneFromPath(state, "resources/bonsai.ply"))
         std::cout << "Loaded " << state.splatCount << " splats\n";
@@ -336,12 +391,12 @@ int main()
             ImGui::SliderFloat("Scale multiplier", &state.renderParams.scaleMultiplier, 0.1f, 3.0f);
             ImGui::SliderFloat("Dilation", &state.renderParams.dilation, 0.0f, 2.0f);
             ImGui::SliderFloat("Max splat radius (px)", &state.renderParams.maxRadiusPx, 1.0f, 1024.0f);
-            ImGui::SliderInt("SH degree", &state.renderParams.shDegree, 0, 2);
+            ImGui::SliderInt("SH degree", &state.renderParams.shDegree, 0, 3);
             ImGui::SameLine();
             ImGui::TextDisabled("(?)");
             if (ImGui::IsItemHovered())
             {
-                ImGui::SetTooltip("0 = DC only, 1 = +linear, 2 = +quadratic (full).\nDegree 3 not yet implemented.");
+                ImGui::SetTooltip("0 = DC only, 1 = +linear, 2 = +quadratic, 3 = +cubic (full).");
             }
         }
         ImGui::Separator();
@@ -364,12 +419,76 @@ int main()
             ImGui::Text("FPS: %.1f  (%.2f ms)", state.smoothedFps, delta * 1000.f);
             ImGui::PlotLines("##FpsHistory", state.fpsHistory.data(), static_cast<int>(state.fpsHistory.size()),
                 state.fpsHistoryIdx, fpsOverlay, 0.0f, FLT_MAX, ImVec2(0, 60));
-            ImGui::Text("Sort time: %.3f ms", state.sortTimeMs);
+            ImGui::Text("Sort time (CPU wall-clock): %.3f ms", state.sortTimeMs);
             ImGui::Text("GPU time: %.3f ms", state.gpuTimeMs);
+            static const char* sortMethodNames[] = { "CPU (std::sort)", "GPU (radix)" };
+            ImGui::Combo("Sort method", &state.sortMethod, sortMethodNames, IM_ARRAYSIZE(sortMethodNames));
+            if (state.sortMethod == 1)
+                ImGui::Text("Sort time (GPU timer): %.3f ms", state.sortTimeGpuMs);
+            else
+                ImGui::TextDisabled("Sort time (GPU timer): %.3f ms (last GPU-mode reading)", state.sortTimeGpuMs);
             ImGui::Separator();
             ImGui::Text("Splats loaded: %u", renderer.getSplatCount());
             ImGui::Text("Splats after culling: %u", renderer.getDrawCount());
             ImGui::Text("Splats drawn: %u", renderer.getDrawCount());
+            ImGui::Separator();
+            if (ImGui::Button("Validate GPU gather (debug)"))
+            {
+                bool ok = renderer.debugValidateGatherStage(gatherShader);
+                state.gatherValidationStatus = ok ? 1 : 0;
+            }
+            ImGui::SameLine();
+            if (state.gatherValidationStatus == 1)
+                ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "OK -- GPU keys == CPU");
+            else if (state.gatherValidationStatus == 0)
+                ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "MISMATCH -- see console");
+
+            if (ImGui::Button("Validate GPU histogram+scan (debug)"))
+            {
+                bool ok = renderer.debugValidateHistogramScanStage(gatherShader, histogramShader,
+                    scanWorkgroupsShader, scanBinsShader);
+                state.histogramScanValidationStatus = ok ? 1 : 0;
+            }
+            ImGui::SameLine();
+            if (state.histogramScanValidationStatus == 1)
+                ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "OK -- sums check out");
+            else if (state.histogramScanValidationStatus == 0)
+                ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "FAILED -- see console");
+
+            if (ImGui::Button("Validate GPU scatter (debug)"))
+            {
+                bool ok = renderer.debugValidateScatterStage(gatherShader, histogramShader,
+                    scanWorkgroupsShader, scanBinsShader, scatterShader);
+                state.scatterValidationStatus = ok ? 1 : 0;
+            }
+            ImGui::SameLine();
+            if (state.scatterValidationStatus == 1)
+                ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "OK -- sorted & stable");
+            else if (state.scatterValidationStatus == 0)
+                ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "FAILED -- see console");
+
+            if (ImGui::Button("Compare CPU vs GPU sort (debug)"))
+            {
+                bool ok = renderer.debugCompareSortMethods(camera, gatherShader, histogramShader,
+                    scanWorkgroupsShader, scanBinsShader, scatterShader);
+                state.cpuGpuCompareStatus = ok ? 1 : 0;
+            }
+            ImGui::SameLine();
+            if (state.cpuGpuCompareStatus == 1)
+                ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "OK -- same order (mod ties)");
+            else if (state.cpuGpuCompareStatus == 0)
+                ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "MISMATCH -- see console");
+
+            if (ImGui::Button("Check sort monotonic (debug)"))
+            {
+                bool ok = renderer.debugCheckSortMonotonic();
+                state.monotonicCheckStatus = ok ? 1 : 0;
+            }
+            ImGui::SameLine();
+            if (state.monotonicCheckStatus == 1)
+                ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), "OK -- depth non-increasing");
+            else if (state.monotonicCheckStatus == 0)
+                ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "VIOLATION -- see console");
 
             if (ImGui::TreeNode("Histograms"))
             {
@@ -442,13 +561,20 @@ int main()
         float gpuMs;
         if (gpuTimer.tryGetResultMs(gpuMs))
             state.gpuTimeMs = gpuMs;
+        float sortGpuMs;
+        if (sortGpuTimer.tryGetResultMs(sortGpuMs))
+            state.sortTimeGpuMs = sortGpuMs;
 
         splatShader.use();
         gpuTimer.begin();
         renderer.preprocess(computeShader, camera, glm::vec2(w, h), state.renderParams);
         if (camera.needsSort()) {
+            SortMethod method = state.sortMethod == 0 ? SortMethod::CPU : SortMethod::GPU;
             auto sortStart = std::chrono::steady_clock::now();
-            renderer.sort(camera);
+            if (method == SortMethod::GPU) sortGpuTimer.begin();
+            renderer.sort(camera, method,
+                gatherShader, histogramShader, scanWorkgroupsShader, scanBinsShader, scatterShader);
+            if (method == SortMethod::GPU) sortGpuTimer.end();
             auto sortEnd = std::chrono::steady_clock::now();
             state.sortTimeMs = std::chrono::duration<float, std::milli>(sortEnd - sortStart).count();
             camera.onSortComplete();
@@ -496,10 +622,12 @@ int main()
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);
     }
+    } // end interactive branch (else)
     }
     catch (const std::exception& e)
     {
         std::cerr << "Fatal error: " << e.what() << "\n";
+        exitCode = 1;
     }
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -507,5 +635,5 @@ int main()
     ImGui::DestroyContext();
     glfwDestroyWindow(window);
     glfwTerminate();
-    return 0;
+    return exitCode;
 }
