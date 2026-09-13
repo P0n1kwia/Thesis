@@ -1,0 +1,302 @@
+% !TEX root = ../main.tex
+\chapter{Rys historyczny i aktualny stan wiedzy}
+\label{chap:stan-wiedzy}
+
+
+\section{Historia rekonstrukcji scen trójwymiarowych}
+\label{sec:historia}
+
+Rekonstrukcja scen trójwymiarowych jest jednym z~problemów współczesnej wizji
+komputerowej. Problem polega na odtworzeniu głębi z~płaskich zdjęć.
+Zazwyczaj głębia ta jest tracona w~wyniku projekcji perspektywicznej.
+Ewolucja tej dziedziny prowadzi nas od matematycznej fotogrametrii, przez
+statystyczne dopasowywanie cech, aż po rewolucję, jaką przyniosło nam głębokie
+uczenie maszynowe.
+
+Podstawy rekonstrukcji scen 3D sięgają XIX wieku i~są związane
+z~fotogrametrią. Fotogrametria to nauka zajmująca się określaniem kształtów
+i~położeń obiektów na podstawie dostępnych zdjęć. Przed erą komputerów proces
+ten opierał się na ręcznej identyfikacji punktów wspólnych na zdjęciach.
+Automatyzacja nastąpiła wraz ze sformułowaniem matematycznych podstaw geometrii
+wielowidokowej. Metody opracowane w~tym czasie pozwoliły powiązać ze sobą
+punkty na różnych obrazach przedstawiających tę samą scenę.
+
+Wczesne komputery nie posiadały jednak stabilnych metod automatycznego
+znajdowania punktów wspólnych na zdjęciach. Kluczowa okazała się praca
+Davida Lowe'a, która zaprezentowała algorytm SIFT \eng{Scale-Invariant Feature
+Transform}~\cite{lowe2004sift}. Algorytm ten pozwolił na identyfikację punktów
+charakterystycznych na obrazach w~sposób odporny na zmiany związane ze skalą
+i~rotacją, a~także na częściowe zmiany oświetlenia i~perspektywy.
+
+Połączenie deskryptorów lokalnych z~algorytmami, które były odporne na szum,
+sprawiło, że można było stworzyć pierwsze w~pełni automatyczne systemy potoku SfM
+\eng{Structure from Motion}. Photo Tourism~\cite{snavely2006phototourism} było
+platformą, która pokazała, że możliwe jest zrekonstruowanie rzadkiej chmury
+punktów oraz pozycji kamer z~tysięcy nieuporządkowanych zdjęć pobranych
+z~internetu. Problem jednak polegał na tym, że SfM generowało wyłącznie rzadkie
+chmury punktów, które, chociaż opisywały geometrię sceny z~perspektywy kamer,
+były zbyt ubogie dla zastosowań wizualizacyjnych (VR, geologia). Rozwiązaniem
+miało być opracowanie algorytmów MVS \eng{Multi-View Stereo}, które potrafiły
+zagęścić chmurę punktów. Następnym krokiem była zamiana punktów na siatki
+wielokątów. Połączenie SfM i~MVS było branżowym standardem. Metody te miały
+jednak jedną dużą wadę: nie radziły sobie z~powierzchniami bezteksturowymi,
+błyszczącymi, przezroczystymi czy zawierającymi powtarzalne wzory.
+
+Powiew świeżości nastąpił w~2020 roku, kiedy zaczęły pojawiać się prace nad
+NeRF \eng{Neural Radiance Fields}~\cite{mildenhall2020nerf}. Zamiast traktować
+przestrzeń jako punkty czy trójkąty, badacze zaproponowali potraktowanie sceny
+jako ciągłego pola funkcji, które jest reprezentowane przez głęboką sieć
+neuronową (MLP). Chociaż NeRF zachwycał fotorealizmem, był bardzo kosztowny
+obliczeniowo. To doprowadziło do narodzin 3D Gaussian Splatting
+(3DGS)~\cite{kerbl2023gaussian}. Metoda ta łączyła zalety reprezentacji
+jawnych i~ciągłych pól luminancji.
+
+
+\section{Wprowadzenie do metody 3DGS}
+\label{sec:3dgs}
+
+\subsection{Reprezentacja sceny}
+\label{subsec:reprezentacja}
+
+Zaprezentowana w~2023 roku w~pracy~\cite{kerbl2023gaussian} metoda
+3D Gaussian Splatting rozwiązywała praktycznie wszystkie problemy technologii
+NeRF. Metoda ta porzuciła koncepcję ciągłego reprezentowania sceny przez sieć
+MLP na rzecz reprezentacji za pomocą trójwymiarowych elipsoid Gaussa (splatów).
+Scena składa się z~punktów, które stają się elipsoidami opisanymi przez zestaw
+parametrów:
+\begin{enumerate}
+  \item Pozycja (środek): wektor $X = (x, y, z)$ określający punkt będący
+        środkiem Gaussiana.
+  \item Skala (wymiary): wektor $S = (s_x, s_y, s_z)$.
+  \item Rotacja: reprezentowana przez kwaternion $Q = (q_w, q_x, q_y, q_z)$
+        w~celu uniknięcia blokady przegubu.
+  \item Nieprzezroczystość: wartość $\alpha \in [0, 1]$.
+  \item Kolor zależny od kierunku: zestaw współczynników harmonik sferycznych,
+        który pozwala na zmianę koloru elipsoidy w~zależności od kierunku.
+\end{enumerate}
+
+Kształt i~orientację Gaussiana opisuje macierz kowariancji
+$\Sigma \in \R^{3 \times 3}$. Macierz ta musi być dodatnio określona, aby
+zapewnić geometryczny sens, dlatego stosuje się następującą postać:
+\begin{equation}
+  \Sigma = R\,S\,S^{\top} R^{\top}.
+  \label{eq:kowariancja}
+\end{equation}
+Macierz $R \in \mathrm{SO}(3)$ jest macierzą rotacji wyznaczaną z~kwaternionu
+jednostkowego $Q$, a~$S$ jest macierzą diagonalną, która na przekątnej zawiera
+wartości skali.
+
+Popularnym formatem plików do przechowywania informacji o~Gaussianach jest
+format PLY. Wartość skali jest w~nim przechowywana po zlogarytmowaniu, co
+sprawia, że podczas odczytu z~pliku należy zastosować funkcję wykładniczą.
+Nieprzezroczystość jest w~tym formacie przechowywana jako logit, zgodnie ze
+wzorem:
+\begin{equation}
+  \alpha = \sigma(x) = \frac{1}{1 + \exp(-x)}.
+  \label{eq:sigmoid}
+\end{equation}
+Kolor natomiast jest modelowany za pomocą harmonik sferycznych (SH) stopnia~3.
+Wymaga to 16 współczynników SH dla każdego kanału RGB, co daje łącznie
+48~wartości.
+
+\subsection{Projekcja Gaussianów na ekran}
+\label{subsec:projekcja}
+
+Renderowanie sceny odbywa się poprzez rzutowanie trójwymiarowych Gaussianów
+na ekran i~ich kompozytowanie. Podstawy tej operacji wywodzą się
+z~pracy~\cite{zwicker2002ewa}, która zaprezentowała metodę EWA Splatting
+\eng{Elliptical Weighted Average Splatting}.
+
+Oznaczmy przez $W$ macierz transformacji widoku, która przekształca punkt
+z~przestrzeni sceny do przestrzeni kamery. Projekcja perspektywiczna jest
+przekształceniem nieliniowym, co uniemożliwia zastosowanie jej do Gaussianów.
+Wykorzystuje się zatem jakobian $J$ do odwzorowania projekcji w~punkcie, który
+jest reprezentowany przez wektor pozycji $X$. Macierz kowariancji Gaussiana
+w~przestrzeni 2D przyjmuje postać:
+\begin{equation}
+  \Sigma' = J\,W\,\Sigma\,W^{\top} J^{\top}.
+  \label{eq:kowariancja2d}
+\end{equation}
+
+Do obliczeń wykorzystuje się tylko górną lewą podmacierz macierzy $\Sigma'$.
+Wtedy potrzebną nam macierz $2 \times 2$ możemy przedstawić jako
+\begin{equation}
+  \Sigma'_2 =
+  \begin{bmatrix}
+    a & b \\
+    b & c
+  \end{bmatrix},
+  \label{eq:kowariancja2x2}
+\end{equation}
+gdzie $a$, $b$, $c$ to elementy macierzy kowariancji w~2D. Macierz ta
+definiuje elipsę, której osie wyznaczone są przez wektory i~wartości własne
+$\lambda_1$ i~$\lambda_2$ (służą do wyznaczania \textit{bounding box} dla
+rasteryzatora). Przekształcenie to odpowiada rzutowi trójwymiarowego Gaussiana
+na płaszczyznę ekranu z~uwzględnieniem perspektywy kamery.
+
+\subsection{Renderowanie i sortowanie}
+\label{subsec:renderowanie}
+
+Finalna barwa piksela wyznaczana jest metodą \textit{alpha compositing}.
+Oznacza to przetwarzanie Gaussianów w~kolejności od najdalszego do
+najbliższego kamery. Kolor każdego piksela jest obliczany zgodnie
+z~równaniem:
+\begin{equation}
+  C(p) = \sum_{i} c_i\, \alpha_i(p) \prod_{j<i} \bigl(1 - \alpha_j(p)\bigr).
+  \label{eq:compositing}
+\end{equation}
+% TODO: iloczyn po j<i we wzorze (eq:compositing) odpowiada kolejności
+% front-to-back (i = 1 to Gaussian NAJBLIŻSZY kamery). Tekst wyżej i niżej
+% mówi o kolejności od najdalszego i numeracji malejąco wg głębokości —
+% ujednolicić opis ze wzorem.
+Indeks $i$ numeruje Gaussiany malejąco według głębokości \eng{depth}.
+$c_i$ jest kolorem $i$-tego Gaussiana wyznaczonym przez SH dla bieżącego
+kierunku patrzenia. Nieprzezroczystość $\alpha_i$ jest liczona w~zależności od
+odległości piksela od centrum elipsy:
+\begin{equation}
+  \alpha_i(p) = o_i \exp\!\left(-\tfrac{1}{2}\, d^{\top} \left(\Sigma'_2\right)^{-1} d\right),
+  \label{eq:alpha}
+\end{equation}
+% TODO: dopisać, czym jest o_i (nieprzezroczystość Gaussiana z p. 1.2.1)
+% i mu'_2 (rzutowany środek Gaussiana).
+gdzie $d = p - \mu'_2$ jest wektorem przesunięcia piksela od rzutowanego
+centrum Gaussiana.
+
+Sortowanie stanowi największe wyzwanie, jeśli chodzi o~wydajność metody.
+Sortowanie na CPU może okazać się za mało efektywne, gdyż sceny potrafią
+posiadać ponad 1~mln Gaussianów. Żeby rozwiązać ten problem, często stosuje się
+algorytmy równoległe do sortowania na karcie graficznej. Najczęściej stosowane
+jest sortowanie pozycyjne \eng{radix sort}. Implementacja sortowania
+pozycyjnego na GPU pozwala zredukować czas sortowania miliona Gaussianów do
+kilku milisekund, podczas gdy analogiczna operacja na CPU zajmuje czas rzędu
+dziesiątek milisekund.
+
+\subsection{Trening}
+\label{subsec:trening}
+
+Inicjalizacja zbioru Gaussianów zaczyna się od metody SfM, która generuje
+rzadkie chmury punktów z~tych samych zdjęć użytych do treningu. Każdy punkt
+chmury staje się środkiem jednego Gaussiana z~kulistą kowariancją i~losową
+barwą SH.
+
+
+Proces treningu minimalizuje funkcję straty, porównując obrazy wyrenderowane
+ze zdjęciami ze zbioru treningowego. Funkcja straty to kombinacja błędu L1
+i~miary strukturalnej D-SSIM.
+
+Ważnym elementem treningu jest kontrola gęstości Gaussianów. Algorytm co pewną
+liczbę iteracji dokonuje zagęszczania i~przycinania. Proces ten klonuje lub
+dzieli Gaussiany o~dużym gradiencie pozycji, a~także usuwa Gaussiany o~małym
+rozmiarze, niskiej nieprzezroczystości. Pozwala to na automatyczne
+dostosowanie liczby i~rozmieszczenia Gaussianów w~zależności od sceny.
+
+\section{Analiza istniejących rozwiązań}
+\label{sec:analiza}
+
+Istnieje wiele narzędzi, które umożliwiają wizualizację, edycję i~analizę
+sceny za pomocą metody 3DGS. Rozwiązania te można podzielić na aplikacje
+desktopowe wymagające CUDA, aplikacje webowe oraz implementacje oparte na
+otwartych standardach i~bibliotekach graficznych. Poniżej omówiono trzy
+reprezentatywne narzędzia.
+
+\subsection{splatviz}
+\label{subsec:splatviz}
+
+Splatviz to narzędzie autorstwa Floriana Barthela. Jest to aplikacja
+desktopowa napisana w~Pythonie, renderująca sceny 3DGS za pomocą kerneli CUDA
+i~wyświetlająca interfejs za pomocą biblioteki ImGui osadzonej w~oknie OpenGL.
+Każda funkcja analityczna to osobny widget UI.
+
+Możliwości renderowania wykraczają poza standardowe narzędzia. Aplikacja ta
+obsługuje tryb split-screen, co pozwala na porównanie wizualne między różnymi
+metodami treningowymi lub parametrami. Są dostępne tryby debugowania, które
+pokazują kanał głębokości i~alpha.
+
+Tym, co wyróżnia splatviz, jest warstwa analityczna. Widget Evaluate pozwala
+na wpisanie kodu w~Pythonie, który jest wykonywany po renderingu i~daje dostęp
+do zmieniania kontekstu renderowania oraz wizualizacji zmian w~postaci
+histogramów. Widget Edit pozwala na zmianę zbioru Gaussianów przez kod
+w~Pythonie, co umożliwia filtrowanie według pewnych kryteriów.
+
+Ograniczeniem tego rozwiązania jest konieczność kompilacji na urządzeniach
+wspierających CUDA, co wyklucza użytkowników nieposiadających kart GPU NVIDIA.
+
+\subsection{SuperSplat}
+\label{subsec:supersplat}
+
+SuperSplat firmy PlayCanvas to aplikacja webowa oparta na WebGL~2.0. Sprawia
+to, że viewer ten działa w~przeglądarce bez instalacji. Jest to standard
+branżowy w~zakresie prezentacji i~edycji scen 3DGS.
+
+Rozwiązanie to posiada wiele funkcji edycyjnych: narzędzia do selekcji
+i~usuwania Gaussianów, kompresję sceny i~kadrowanie obszaru roboczego oraz
+eksport do formatów PLY lub SPLAT. Zawiera też wbudowaną historię zmian
+z~funkcją cofania ostatnich zmian. Mamy też efekty post-processingu, wsparcie
+WebXR, co pozwala na oglądanie scen na urządzeniach VR/AR, a~także do 25
+adnotowanych hotspotów z~tytułami, opisami i~zapisanymi widokami kamery.
+Funkcja Timeline pozwala na tworzenie animowanych przelotów przez scenę.
+
+Tym, czego na pewno brakuje SuperSplat, są funkcje analityczne. Edytor
+wyświetla histogramy podstawowych właściwości i~podstawowe statystyki
+numeryczne sceny, ale nie posiada narzędzi analizy ani dostępu do parametrów
+Gaussianów, które pozwalałyby na własne metryki jakości. Ograniczenia te
+wynikają z~tego, że rozwiązanie to bazuje na WebGL~2.0, co utrudnia eksport
+danych do warstwy analitycznej.
+
+\subsection{3DGS.cpp}
+\label{subsec:3dgscpp}
+
+Projekt 3DGS.cpp autorstwa shg8 wykorzystuje Vulkan API i~compute pipeline.
+Vulkan został wybrany ze względu na dostępność prymitywów warp-level zbliżonych
+do CUDA. W~obecnej wersji API OpenGL jest uznawany za przestarzały na
+platformach Apple. Obsługiwane platformy to Windows, Linux, macOS, iOS
+i~visionOS.
+
+Jest to aplikacja C++ z~modułową strukturą oddzielającą backend renderujący od
+warstwy okienkowej. Shadery Vulkana (SPIR-V) implementują kolejne etapy
+potoku: preprocessing Gaussianów, sortowanie pozycyjne na GPU i~rasteryzację.
+Funkcje wizualizacyjne to m.in.\ kontrola kamery, ładowanie pliku PLY
+i~podstawowe parametry renderowania.
+
+Największa wartość rozwiązania polega na demonstracji tego, że można stworzyć
+viewer, nie używając do tego CUDA, a~używając otwartych standardów. Projekt
+udowadnia, że wydajność, którą zapewniają karty NVIDIA, jest osiągalna na
+kartach AMD, Intel i~Apple Silicon, co rozszerza grupę odbiorców. Brakuje tutaj
+natomiast funkcji analitycznych, edycyjnych i~trwałych operacji zapisu.
+
+\subsection{Zestawienie i wnioski}
+\label{subsec:zestawienie}
+
+Tabela~\ref{tab:porownanie} zawiera zestawienie porównawcze omówionych
+narzędzi według wybranych kryteriów funkcjonalnych i~technologicznych.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Zestawienie porównawcze narzędzi wizualizacji scen 3DGS}
+  \label{tab:porownanie}
+  \small
+  \renewcommand{\arraystretch}{1.2}
+  \begin{tabularx}{\textwidth}{
+      >{\raggedright\arraybackslash}p{0.2\textwidth}
+      >{\raggedright\arraybackslash}X
+      >{\raggedright\arraybackslash}X
+      >{\raggedright\arraybackslash}X}
+    \toprule
+    \textbf{Kryterium} & \textbf{splatviz} & \textbf{SuperSplat} & \textbf{3DGS.cpp} \\
+    \midrule
+    Stos technologiczny & Python + CUDA + ImGui & Web (PlayCanvas / WebGL~2) & C++ + Vulkan \\
+    Platforma           & Linux/Win (NVIDIA) & Przeglądarka (uniwersalna) & Win/\allowbreak Linux/\allowbreak macOS/\allowbreak iOS \\
+    Wizualizacja        & Zaawansowana (multi-scene, debug) & Dojrzała + WebXR & Bazowa \\
+    Analityka           & Bardzo silna (Eval Widget, histogramy) & Podstawowa & Brak \\
+    Edycja              & Minimalna (przez kod) & Bardzo silna (selekcje, timeline) & Brak \\
+    Format wejściowy    & .ply, .yml & .ply, .splat, .ksplat, .sogs & .ply \\
+    Zależność od CUDA   & Tak & Nie & Nie \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Proponowany w~pracy viewer 3DGS będzie stworzony w~języku C++ z~użyciem
+OpenGL. Będzie to rozwiązanie niewymagające CUDA, posiadające ergonomię
+interfejsu oraz podstawowe narzędzia do analizy. W~potoku realizacji
+zastosowane będą compute shadery (dostępne od OpenGL~4.3), żeby
+zaimplementować sortowanie pozycyjne.

@@ -1,0 +1,95 @@
+\documentclass[a4paper,12pt,oneside]{report}
+
+\usepackage[T1]{fontenc}
+\usepackage[polish]{babel}
+\usepackage{lmodern}        
+\usepackage[babel=true]{microtype}
+\usepackage[autostyle=true]{csquotes}   
+
+
+\usepackage[
+  a4paper,
+  top=2.5cm, bottom=2.5cm,
+  left=2.5cm, right=2.5cm,
+  bindingoffset=1cm           % margines na oprawę (dodawany po lewej)
+]{geometry}
+
+\usepackage{setspace}
+\onehalfspacing               % interlinia 1,5
+\usepackage{indentfirst}      % wcięcie także w pierwszym akapicie po nagłówku
+
+
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{graphicx}
+\graphicspath{{rysunki/}}    
+\usepackage[labelsep=period,font=small]{caption}
+\usepackage{enumitem}
+\setlist{nosep, leftmargin=*, labelindent=\parindent}
+
+\numberwithin{equation}{chapter}
+
+
+\usepackage{titlesec}
+\titleformat{\chapter}[hang]
+  {\normalfont\LARGE\bfseries}{\thechapter.}{0.5em}{}
+\titlespacing*{\chapter}{0pt}{0pt}{1.5em}
+\titleformat{\section}
+  {\normalfont\Large\bfseries}{\thesection}{0.75em}{}
+\titleformat{\subsection}
+  {\normalfont\large\bfseries}{\thesubsection}{0.75em}{}
+
+
+\usepackage[
+  backend=biber,
+  style=numeric,
+  sorting=none,              
+  doi=true, url=false, isbn=false,
+  maxbibnames=10
+]{biblatex}
+\addbibresource{bibliografia.bib}
+
+\usepackage[hidelinks,unicode]{hyperref}
+
+
+\newcommand{\eng}[1]{(ang.~\textit{#1})}   % np. \eng{radix sort}
+\newcommand{\R}{\mathbb{R}}
+
+
+\addto\captionspolish{%
+  \renewcommand{\tablename}{Tabela}%
+  \renewcommand{\figurename}{Rysunek}%
+}
+
+
+\newcommand{\uczelnia}{Uniwersytet Bielsko-Bialski}
+\newcommand{\wydzial}{Wydział \dots}                % 
+\newcommand{\kierunek}{\dots}                       % 
+\newcommand{\autor}{Imię Nazwisko}                  % 
+\newcommand{\nralbumu}{000000}                      % 
+\newcommand{\promotor}{dr inż.~Imię Nazwisko}       % 
+\newcommand{\tytul}{System wizualizacji i analizy scen trójwymiarowych
+  metodą 3D Gaussian splatting}
+\newcommand{\kategoria}{projektowa}
+\newcommand{\miejscerok}{Bielsko-Biała, 2026}
+
+\hypersetup{pdftitle={\tytul}, pdfauthor={\autor}}
+
+\begin{document}
+
+\input{strona_tytulowa}
+\setcounter{page}{2} 
+
+\tableofcontents
+\clearpage
+
+\input{rozdzialy/wstep}
+\input{rozdzialy/rozdzial1}
+\input{rozdzialy/rozdzial2}
+
+
+\printbibliography[heading=bibintoc, title={Bibliografia}]
+
+\end{document}
