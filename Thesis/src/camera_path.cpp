@@ -49,8 +49,6 @@ CameraPath CameraPath::loadFromFile(const std::string& path)
         kf.config.radius = entry.value("radius", defaults.radius);
         kf.config.yaw = entry.value("yaw", defaults.yaw);
         kf.config.pitch = entry.value("pitch", defaults.pitch);
-        // "frame" is optional: keyframes without it are spaced one frame apart
-        // in file order, starting after the previous keyframe's frame.
         kf.frame = entry.value("frame", nextImplicitFrame);
         nextImplicitFrame = kf.frame + 1.f;
         result.keyframes.push_back(kf);

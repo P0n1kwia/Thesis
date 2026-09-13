@@ -146,11 +146,6 @@ int runBenchmark(GLFWwindow* window, SplatRenderer& renderer, Camera& camera,
 
         renderer.preprocess(shaders.computeShader, camera, screenSize, renderParams);
 
-        // GPU-timestamp-based, not std::chrono: renderer.sort() for SortMethod::GPU only
-        // submits glDispatchCompute/glMemoryBarrier calls and returns to the CPU before
-        // the GPU has actually done the work, so a chrono wrapper would measure dispatch
-        // submission overhead instead of sort time (see sortGpuTimer in main.cpp for the
-        // same pattern in the interactive path).
         sortGpuTimer.begin();
         renderer.sort(camera, args.sortMethod, shaders.gatherShader, shaders.histogramShader,
             shaders.scanWorkgroupsShader, shaders.scanBinsShader, shaders.scatterShader);
