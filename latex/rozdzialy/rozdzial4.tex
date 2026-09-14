@@ -1,0 +1,233 @@
+% !TEX root = ../main.tex
+\chapter{Implementacja Systemu}
+\label{chap:implementation}
+W tym rozdziale przedstawiono implementację systemu zaprojektowanego w rozdziale \ref{chap:projekt_systemu}. Opis będzie prowadzony zgodnie z przepływem danych w aplikacji: od wczytania sceny i konfiguracji, przez sterowanie kamerą, przetwarzanie Gaussianów i sortowanie, aż do rasteryzacji, analizy i mechanizmów pomiarowych.
+\section{Organizacja kodu i proces budowania}
+\label{sec:organizacja}
+Kod podzielono na trzy katalogi: \texttt{include, src} oraz \texttt{shaders}. Pliki nagłowkowe (z rozszerzeniem \texttt{.h}) definiują interfejsy modułów i struktury danych, natomiast pliki źródłowe zawierają ich implementację (rozszerzenie \texttt{.cpp}). Programy GLSL są przechowywane niezależnie od kodu C++ w folderze shaders (w rozszerzeniach \texttt{.frag, .vert, .comp}). Zasoby wejściowe (sceny, ustawienia kamery) umieszczono w katalogu \texttt{resources}. Najważniejsze pliki i ich zadania przedstawia tabela \ref{tab:pliki}
+\begin{table}[htbp]
+  \centering
+  \caption{Najważniejsze elementy implementacji}
+  \label{tab:impl_pliki}
+  \small
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabularx}{\textwidth}{
+      >{\raggedright\arraybackslash}p{0.35\textwidth}
+      >{\raggedright\arraybackslash}X}
+    \toprule
+    \textbf{Plik lub grupa plików} & \textbf{Zadanie} \\
+    \midrule
+    \texttt{main.cpp} & Inicjalizacja aplikacji, obsługa zdarzeń, pętla
+      główna i budowanie interfejsu użytkownika. \\
+    \texttt{splat.h}, \texttt{load\_splat.cpp} & Reprezentacja pojedynczego
+      splatu oraz odczyt i dekodowanie danych z pliku PLY. \\
+    \texttt{camera.cpp}, \texttt{camera\_presets.cpp} & Kamera orbitalna
+      oraz trwały zapis nazwanych ustawień kamery. \\
+    \texttt{splat\_renderer.cpp} & Utworzenie buforów OpenGL, przetwarzanie
+      wstępne, kompaktowanie, sortowanie i wywołanie rysowania. \\
+    \texttt{preprocessing.comp} & Odrzucanie niewidocznych elementów,
+      obliczenie barwy, kowariancji 2D i parametrów elipsy ekranowej. \\
+    \texttt{radix\_*.comp} & Pięć etapów składających się na sortowanie
+      pozycyjne wykonywane na GPU. \\
+    \texttt{splat.vert}, \texttt{splat.frag} & Utworzenie instancji
+      prostokąta i obliczenie wkładu Gaussiana dla każdego fragmentu. \\
+    \texttt{benchmark.cpp}, \texttt{gpu\_timer.cpp} & Powtarzalny tryb
+      pomiarowy i pomiar czasu z użyciem zapytań OpenGL. \\
+    \texttt{screenshot.cpp}, \texttt{image\_compare.cpp} & Zapis obrazu PNG
+      oraz obliczanie miar PSNR i SSIM. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+Konfiguracja budowania projektu znajduje się w dwóch plikach CMake. Plik nadrzędny deklaruje projekt w standardzie C++20, a dzięki modułowi \texttt{FetchContent} pobiera zależności. Dla każdej biblioteki wskazano konkretną wersję. Następnie tworzony jest loader funkcji dla profilu OpenGL 4.3 Core, statyczne biblioteki ImGui i ImPlot oraz cel wykonywalny, nazwany na potrzeby pracy: \texttt{thesis}. Po zakończonej kompilacji foldery z shaderami i zasobami kopiowane są obok pliku wykonywalnego. Dzięki temu kopiowaniu program może posługiwać się ścieżkami względnymi
+
+Przy uruchomieniu GLFW tworzy okno i kontekst OpenGL 4.3 Core. W trybie interaktywnym ma ono domyślny rozmiar $1280\times720$ pikseli, można ręcznie zmieniać rozmiar okna. Tryb pomiarowy korzysta z tego samego kontekstu i potoku, lecz tworzy niewidoczne okno o rorzdzielczości podanej w argumentach programu. Gdy już aktywowany jest kontekst GLAD pobiera adresy funkcji OpenGL, a następnie iniczjalizowane są ImGui i ImPlot. Kompilacja programów shaderowych odbywa się w czasie uruchomienia.
+\section{Wczytywanie i przygotowanie sceny}
+\label{sec:przygotowywanie}
+W trybie interaktwynym scena startowa \texttt{bonsai.ply} jest wczytywana z katalogu zasobów. Użytkownik może następnie wskazać inny plik za pomocą natywnego okna wyboru albo przez upuszczenie go na okno aplikacji. Oba sposoby wywołują funkcję \texttt{loadSceneFromPath}. Funkcja wczytująca najpierw sprawdza rozszerzenie pliku, a następnie wywołuje parser formatu \texttt{PLY}. Nowa scena jest przekazywana do renderera dopiero po poprawnym zakończeniu odczytu. Błędny plik nie kończy działania aplikacji i nie usuwa wcześniej wczytanych danych, gdyż wyjątek zostaje zamieniony na komunikat widoczny w panelu.
+
+Biblioteka \texttt{happly} udostępnia właściwości elementu \texttt{vertex} jako osobne tablice (w kodzie reprezentowane jako \texttt{$std::vector$}). Implementacja odczytuje obowiązkowe właściwości jak położenie \texttt{x, y, z}, współczynniki barwy \texttt{$f_dc_0 \- f_dc_2$}, surową (nieprzetworzoną) nieprzeźroczystość, trzy skale i cztery składowe rotacji. Współczynniki wyższych rzędów harmonik sferycznych są opcjonalne, a funkcja wczytująca właściwości zwraca tablicę zer w przypadku gdy brakuje danej właściwości. Pozwala to wyświetlić zarówno scenę w harmonikach sferycznych stopnia trzeciego, jak i uproszczone sceny zawierające stałe składowe.
+
+Wartości zapisane po treningu sceny nie zawsze należą do dziedziny parametrów renderera. Podczas wczytywania odtwarzane są funkcje aktywacji stosowane w modelu 3DGS. Dla surowej nieprzeźroczystości $o$ oraz skali $s_i$ są to odpowiednio
+\begin{equation}
+  \alpha=\frac{1}{1+\exp(-o)},
+  \qquad
+  \sigma_i=\exp(s_i), \quad i\in\{x,y,z\}.
+  \label{eq:impl_aktywacje}
+\end{equation}
+Pierwsza transformacja ogranicza nieprzezroczystość do przedziału $(0,1)$, a druga gwarantuje dodatnie długości osi elipsoidy. Kwaternion zostaje podzielony przez własną normę. W pamięci współczynniki wyższych pasm są przedstawiane z układu bloków kanałów występującego w PLY do układu RGB. Odpowiada to sposobowi ich odczytu w programie obliczeniowym. Wynikiem jest tablica struktur \texttt{Splat}. Zastosowano układ struktur \eng{array of structures}, ponieważ jeden rekord można bezpośrednio skopiować do bufora GPU, a jego stały rozmiar upraszcza obliczenie przesunięcia. Każdy rekord zawiera 59 liczb typu \texttt{float}, zgodnie z modelem danych z podrozdziału~\ref{subsec:struktura}. W programie GLSL bufor jest widziany jako płaska tablica, zatem początek rekordu o indeksie $i$ ma przesunięcie $59i$.
+
+Metoda \texttt{SplatRenderer::upload} zachowuje kopię sceny w pamięci operacyjnej, tworzy pomocniczą tablicę głębokości i alokuje wszystkie bufory SSBO opisane w podrozdziale~\ref{gpudata}. Dane splatów trafiają do bufora o przeznaczeniu statycznym, natomiast bufory wynikowe i sortujące są alokowane jako dynamiczne. Ponowne wczytanie sceny unieważnia pamięć podręczną preprocessingu oraz zeruje liczbę elementów przeznaczonych do rysowania.
+\section{Kamera orbitalna i obsługa wejścia}
+\label{sec:impl_kamera}
+
+Stan kamery przechowuje punkt obserwowany $\mathbf{t}$, promień $r$, azymut $\psi$ i elewację $\theta$. Pozycja obserwatora jest wyznaczana dopiero wtedy, gdy zażąda jej renderer (czyli w przypadku zdarzenia myszy i pomyślnego przejścia progu 0.2% rozmiaru orbity):
+\begin{equation}
+  \mathbf{e}=\mathbf{t}+r
+  \begin{bmatrix}
+    \cos\psi\cos\theta \\
+    \sin\theta \\
+    \sin\psi\cos\theta
+  \end{bmatrix}.
+  \label{eq:impl_kamera}
+\end{equation}
+Na jej podstawie funkcja \texttt{glm::lookAt} tworzy macierz widoku, a \texttt{glm::perspective} macierz projekcji perspektywistycznej. Flaga \texttt{dirty} sprawia, macierze nie są obliczane ponownie w klatkach, w których kamera pozostaje nieruchoma. Elewację ograniczono do przedziału $(-89^\circ,89^\circ)$, aby kierunek patrzenia nie stał się równoległy do globalnego wektora osi pionowej.
+
+Lewy przycisk myszy zmienia azymut i elewację, prawy przesuwa punkt obserwowany w lokalnej płaszczyźnie obrazu, a rolka zmienia promień. Szybkość przesuwania wyznaczana jest w jednostkach świata z wysokości okna, pola widzenia i bieżącego promienia. Dzięki temu ten sam ruch kursora odpowiada zbliżonemu przesunięciu na ekranie niezależnie od odległości kamery. Skalowanie promienia również jest proporcjonalne do jego bieżącej wartości, a dolna granica $0.1$ zapobiega przejściu obserwatora przez punkt docelowy. Zdarzenia myszy są ignorowane, kiedy interfejs ImGui sygnalizuje, że chce je przechwycić.
+
+Oprócz flagi aktualności macierzy kamera przechowuje pozycję z ostatniego sortowania. Nowe sortowanie jest wymagane, jeżeli przemieszczenie przekracza 0,2$\%$ promienia. Tolerancja ogranicza koszt wielokrotnego porządkowania dużej sceny wskutek bardzo małych ruchów wejścia. Po zakończeniu operacji renderer wywołuje \texttt{onSortComplete}, zapisując nowy punkt odniesienia do wykorzystania w kolejnych obliczeniach.
+
+Konfiguracja kamery obejmuje także pole widzenia oraz płaszczyzny bliską \eng{near plane} i daleką \eng{far plane}. Nazwane konfiguracje są zapisywane w pliku \texttt{camera\_presets.json}. Serializacji podlega konfiguracja, a nie obiekt kamery wraz z jego stanem wewnętrznym. Przy odczycie uszkodzony lub niezgodny plik jest traktowany jak pusty zbiór ustawień. Rozwiązanie to pozwala powrócić do dokładnie tego samego widoku podczas analizy sceny.
+\section{Przetwarzanie wstępne na GPU}
+\label{sec:impl_preprocessing}
+
+Przetwarzanie wstępne realizuje compute shader
+\texttt{preprocessing.comp}. Grupa robocza zawiera 256 wywołań, a pojedyncze
+wywołanie odpowiada jednemu splatowi. Liczba grup jest równa
+$\lceil N/256\rceil$; warunek na globalny indeks zabezpiecza ostatnią,
+niepełną grupę. Przed uruchomieniem programu renderer przekazuje macierze,
+pozycję kamery, rozmiar ekranu, sześć płaszczyzn bryły widzenia oraz parametry
+sterowane z interfejsu.
+
+\subsection{Odrzucanie i kompaktowanie elementów}
+\label{subsec:impl_culling}
+
+Na początku programu wykonywane są tanie testy pozwalające uniknąć dalszych obliczeń. Splat jest odrzucany, gdy jego bazowa nieprzezroczystość jest mniejsza od progu użytkownika, jego sfera ograniczająca leży całkowicie poza co najmniej jedną płaszczyzną bryły widzenia albo środek znajduje się zbyt blisko lub za kamerą. Promień sfery przyjęto jako trzykrotność największej skali.
+
+Widoczne elementy są jednocześnie kompaktowane. Każdy taki wątek pobiera unikalną pozycję przez operację atomową \texttt{atomicAdd(visibleCount, 1)} i zapisuje pod nią pierwotny indeks splatu. Pełny bufor wyniku pozostaje indeksowany identyfikatorem sceny, a zwarta lista określa, które rekordy trzeba sortować i rysować. Po zakończeniu programu bariera pamięci udostępnia zapisy kolejnym etapom GPU oraz procesorowi. CPU odczytuje licznik i odpowiedni prefiks listy indeksów. Synchroniczny odczyt upraszcza współdzielenie tej samej listy przez wariant sortowania CPU i GPU, jednak może zatrzymać procesor do czasu zakończenia programu obliczeniowego. Jest to świadomy kompromis obecnej implementacji.
+
+Renderer zapamiętuje argumenty ostatniego preprocessingu: macierze widoku i projekcji, pozycję kamery, rozmiar ekranu oraz parametry renderowania. Jeżeli wszystkie wartości są identyczne, ponowne uruchomienie shadera jest pomijane. Optymalizacja eliminuje powtarzanie tych samych obliczeń, gdy użytkownik analizuje nieruchomy kadr.
+
+\subsection{Barwa zależna od kierunku obserwacji}
+\label{subsec:impl_sh}
+
+Barwa jest zależna od kierunku patrzenia. Kierunek używany do obliczenia barwy jest znormalizowanym wektorem od kamery do środka splatu. Shader zawsze oblicza pasmo stałe, a zależnie od wartości \texttt{uSHDegree} dodaje pasma liniowe, kwadratowe i sześcienne. Dla stopnia $L$ barwę można zapisać jako
+\begin{equation}
+  \mathbf{c}(\mathbf{d})=\frac{1}{2}\mathbf{1}+
+  \sum_{l=0}^{L}\sum_{m=-l}^{l}
+  \mathbf{k}_{l,m}Y_l^m(\mathbf{d}), \qquad 0\leq L\leq3,
+  \label{eq:impl_sh}
+\end{equation}
+gdzie $\mathbf{k}_{l,m}$ jest trójką współczynników RGB. Wielomianowe postacie funkcji bazowych i ich stałe zapisano bezpośrednio w shaderze. Możliwość ograniczenia stopnia pozwala ocenić koszt i wpływ składowych zależnych od kierunku bez ponownego wczytywania sceny.
+
+\subsection{Rzutowanie kowariancji na ekran}
+\label{subsec:impl_kowariancja}
+
+Skala i kwaternion opisują macierz kowariancji Gaussiana w przestrzeni 3D. Po zbudowaniu macierzy obrotu $R$ i diagonalnej macierzy skali $S$ shader oblicza
+\begin{equation}
+  \Sigma = (RS)(RS)^{T}.
+  \label{eq:impl_cov3d}
+\end{equation}
+Następnie kowariancja jest przekształcana do przestrzeni obrazu metodą stosowaną w EWA splattingu i 3DGS~\cite{zwicker2002ewa,kerbl2023gaussian}:
+\begin{equation}
+  \Sigma' = J W \Sigma W^{T}J^{T},
+  \label{eq:impl_cov2d}
+\end{equation}
+gdzie $W$ jest częścią liniową macierzy model--widok, a $J$ oznacza jakobian rzutowania perspektywicznego w środku splatu. Ogniskowe $f_x$ i $f_y$ są odtwarzane z macierzy projekcji i wymiarów ekranu. Do elementów diagonalnych macierzy $2\times2$ dodawany jest parametr dylatacji, który pełni rolę filtru: ogranicza zanikanie bardzo małych splatów.
+
+Rozmiar prostokąta ograniczającego jest równy trzem odchyleniom standardowym w obu osiach ekranu. Wartość jest zaokrąglana w górę do pełnych pikseli i ograniczana parametrem maksymalnego promienia. Z macierzy $\Sigma'$ obliczana jest odwrotność w zwartej postaci trzech liczb $(a,b,c)$, ponieważ macierz symetryczna nie wymaga przechowywania czterech elementów. Dla każdego widocznego splatu bufor wynikowy zawiera trzy wektory \texttt{vec4}:
+\begin{enumerate}
+  \item środek w pikselach i dwie składowe rozmiaru prostokąta,
+  \item trzy elementy odwrotnej kowariancji oraz głębokość,
+  \item barwę RGB oraz bazową nieprzezroczystość.
+\end{enumerate}
+Łącznie jest to 48 bajtów na splat. Taki układ jest bezpośrednio odczytywany przez program wierzchołków \eng{vertex shader} i nie wymaga ponownego wykonywania obliczeń dla czterech wierzchołków tej samej instancji.
+\section{Sortowanie po głębokości}
+\label{sec:impl_sortowanie}
+
+Kompozycja przezroczystych splatów wymaga kolejności od najdalszego do najbliższego. Aplikacja udostępnia dwie implementacje tej operacji. Obie przyjmują zwartą listę widocznych identyfikatorów i kończą się zapisaniem uporządkowanych indeksów do bufora używanego przez program wierzchołków.
+
+\subsection{Wariant procesorowy}
+
+Wariant CPU mnoży pozycję każdego widocznego elementu przez macierz model \- widok. Kluczem jest dodatnia głębokość $z_i=-p_{i,z}^{view}$. Identyfikatory są porządkowane malejąco według $z_i$ przy użyciu \texttt{std::sort} z polityką \texttt{std::execution::par\_unseq}. Po zakończeniu cała uporządkowana lista trafia do bufora indeksów wywołaniem \texttt{glBufferSubData}. Złożoność obliczeniowa wynosi $O(V\log V)$ dla $V$ elementów pozostałych po odrzucaniu, a dodatkowym kosztem jest transfer $4V$ bajtów z pamięci operacyjnej do pamięci karty.
+
+\subsection{Sortowanie pozycyjne na GPU}
+\label{subsec:impl_radix}
+
+Druga implementacja jest sortowaniem LSD radix sort, zbudowanym wyłącznie z mechanizmów OpenGL 4.3. Pozytywna liczba zmiennoprzecinkowa zachowuje porządek w swojej reprezentacji bitowej IEEE 754. Shader zbierający zapisuje więc parę identyfikator \- klucz, gdzie
+\begin{equation}
+  k_i=\mathtt{0xFFFFFFFF}-\operatorname{bits}(z_i).
+  \label{eq:impl_radix_key}
+\end{equation}
+Odwrócenie wartości sprawia, że rosnące sortowanie całkowitoliczbowe daje wymaganą kolejność malejącej głębokości.
+
+Cyfra ma szerokość czterech bitów, dlatego istnieje 16 kubełków, a pełny 32-bitowy klucz wymaga ośmiu stabilnych przebiegów. Wybór ten zwiększa liczbę przebiegów w stosunku do cyfry ośmiobitowej, ale ogranicza pamięć współdzieloną i nie wymaga rozszerzeń operujących na podgrupach. Każdy przebieg składa się z trzech faz:
+\begin{enumerate}
+  \item \texttt{radix\_histogram.comp} wyznacza histogram 16 cyfr osobno
+    dla każdej grupy roboczej;
+  \item dwa programy skanują histogramy najpierw między grupami, a następnie
+    między kubełkami, tworząc globalne przesunięcia prefiksowe;
+  \item \texttt{radix\_scatter.comp} oblicza stabilną pozycję każdego
+    elementu i zapisuje go do bufora docelowego.
+\end{enumerate}
+
+Grupa robocza ma 256 wątków, z których każdy obsługuje cztery kolejne elementy, zatem grupa przetwarza maksymalnie 1024 pary. W fazie rozpraszania lokalne liczności są skanowane w pamięci współdzielonej. Docelowa pozycja jest sumą globalnego początku kubełka, liczby takich samych cyfr we wcześniejszych grupach, prefiksu wcześniejszych wątków oraz rangi elementu w obrębie danego wątku. Stabilność tej operacji jest konieczna, ponieważ każdy kolejny przebieg przetwarza bardziej znaczącą cyfrę~\cite{satish2009sorting}.
+
+Bufory kluczy i indeksów pracują w tzw. układzie ping-pong. W parzystych przebiegach źródłem jest zestaw A, a w nieparzystych zestaw B. Osiem przebiegów powoduje, że końcowa lista ponownie znajduje się w głównym buforze indeksów, więc etap rysowania nie wymaga kopiowania. Między kolejnymi programami wywoływana jest bariera \texttt{GL\_SHADER\_STORAGE\_BARRIER\_BIT}, zapewniająca widoczność zapisów SSBO zgodnie z modelem pamięci OpenGL~\cite{khronos2013opengl43}.
+
+Implementacja zawiera osobne procedury kontrolne dla zbierania kluczy, histogramu i skanowania, pojedynczego rozpraszania oraz całego sortowania. Weryfikują one wynik względem obliczeń CPU,  stabilność i zachowanie zbioru identyfikatorów. Przy porównaniu pełnych wyników różnice dotyczące praktycznie tej samej głębokości są tolerowane do ośmiu jednostek ULP \eng{unit in the last place}, ponieważ kolejność elementów o równych kluczach nie wpływa jednoznacznie na ocenę poprawności algorytmu.
+\section{Rasteryzacja i kompozycja obrazu}
+\label{sec:impl_rasteryzacja}
+
+Geometrię kafelka stanowi jeden prostokąt złożony z dwóch trójkątów. Metoda \texttt{glDrawElementsInstanced} rysuje go tyle razy, ile elementów znajduje się w aktualnym buforze indeksów. Program wierzchołków pobiera identyfikator splatu przez \texttt{gl\_InstanceID}, odczytuje trzy rekordy preprocessingu i przelicza prostokąt z pikseli na znormalizowane współrzędne urządzenia. Splat odrzucony w preprocessingu ma zerowy rozmiar i jego położenie jest ustawiane poza obszarem widocznym.
+
+Program fragmentów oblicza przesunięcie piksela od środka elipsy
+$\mathbf{d}=(d_x,d_y)^T$ oraz wykładnik
+\begin{equation}
+  q=-\frac{1}{2}\mathbf{d}^{T}\Sigma'^{-1}\mathbf{d}.
+  \label{eq:impl_fragment}
+\end{equation}
+Końcowa nieprzezroczystość wynosi
+$\alpha=\min(0{,}99,\alpha_0\exp(q))$. Fragmenty poniżej progu
+$0{,}0039\approx1/255$ są odrzucane. Ograniczenie maksimum zapobiega całkowitemu wyzerowaniu udziału dalszych splatów w obliczeniach o skończonej precyzji.
+
+Barwa wyjściowa jest mnożona przez $\alpha$. Globalny stan mieszania ustawiono na \texttt{glBlendFunc(GL\_ONE, GL\_ONE\_MINUS\_SRC\_ALPHA)}. Dla kolejnych warstw od najdalszej do najbliższej bufor koloru przyjmuje zatem postać
+\begin{equation}
+  \mathbf{C}_{out}=\mathbf{C}_{src}+ (1-\alpha_{src})\mathbf{C}_{dst}.
+  \label{eq:impl_blending}
+\end{equation}
+Jest to implementacja operatora \emph{over} zgodna z kolejnością ustaloną w sekcji~\ref{sec:impl_sortowanie}.
+
+Ten sam shader fragmentów realizuje sześć trybów widoku: właściwy kolor, głębokość, bazową nieprzezroczystość, przerysowanie, kontur elipsy oraz kolor wyznaczony z identyfikatora splatu. W trybie przerysowania stosowane jest mieszanie addytywne, dzięki czemu jaśniejszy piksel oznacza większą liczbę nakładających się fragmentów. Widok konturu zachowuje tylko wąski zakres wartości $\alpha$, a deterministyczna funkcja skrótu identyfikatora ułatwia rozróżnienie sąsiednich splatów.
+
+Tryb podzielonego ekranu wykonuje dwa wywołania rysowania z różnymi obszarami \texttt{glViewport} i różnymi trybami diagnostycznymi. Parametry \texttt{uViewportOffsetX} oraz \texttt{uViewportScale} przeliczają \texttt{gl\_FragCoord} z lokalnego obszaru widoku do współrzędnych pełnej klatki. Oba obrazy korzystają z identycznej kamery, preprocessingu i uporządkowania, dlatego różnią się jedynie sposobem prezentacji danych.
+
+\section{Interfejs i funkcje analityczne}
+\label{sec:impl_interfejs}
+Interfejs jest budowany w każdej klatce zgodnie z modelem immediate mode. Panel \texttt{Status} podzielono na pięć rozwijanych sekcji:
+\begin{enumerate}
+  \item \texttt{Scene} prezentuje nazwę pliku, liczbę splatów i oszacowanie
+    zajętości VRAM oraz udostępnia natywne okno wyboru pliku;
+  \item \texttt{Capture} zapisuje bieżący obraz do pliku PNG, również po
+    naciśnięciu klawisza F2;
+  \item \texttt{Camera} tworzy, przywraca i usuwa nazwane ustawienia;
+  \item \texttt{Rendering} zawiera próg nieprzezroczystości, mnożnik skali,
+    dylatację, maksymalny promień ekranowy oraz stopień harmonik sferycznych;
+  \item \texttt{View} wybiera tryb diagnostyczny i porównanie dzielone;
+  \item \texttt{Stats} przedstawia pomiary, metodę sortowania, procedury
+    walidacyjne oraz histogramy.
+\end{enumerate}
+
+Liczba klatek na sekundę jest wygładzana przez interpolację z wagą $0,1$, a 120 ostatnich wartości trafia do wykresu historii. Panel pokazuje również czas klatki, czas sortowania mierzony zegarem procesora, czas GPU, liczbę elementów przed i po odrzuceniu oraz szacowany rozmiar buforów sceny.
+Przełącznik sortowania pozwala zmienić implementację w trakcie działania, bez ponownego wczytywania danych czy aplikacji.
+
+Histogram nieprzezroczystości i maksymalnej skali jest tworzony dla listy aktualnie widocznych splatów. Histogram rozmiaru ekranowego wymaga odczytu bufora preprocessingu z GPU, dlatego jest odświeżany wyłącznie na żądanie. Takie rozwiązanie nie wprowadza kosztownej synchronizacji do każdej klatki, a nadal umożliwia analizę rozkładu powierzchni pokrywanej przez splaty.
+
+Zrzut ekranu powstaje przez \texttt{glReadPixels} przed nałożeniem interfejsu, więc zapisany PNG zawiera wyłącznie render sceny. Dane są odwracane pionowo, aby skompensować różnicę położenia początku układu OpenGL i obrazu rastrowego. Nazwa pliku zawiera znacznik czasu, a w przypadku kolizji dodawany jest kolejny numer.
+
+\section{Tryb pomiarowy i weryfikacja obrazu}
+\label{sec:impl_pomiary}
+
+Tryb wsadowy uruchamia się argumentem \texttt{--bench}. Wymaga on pliku PLY oraz ścieżki kamery zapisanej w JSON. Klatki kluczowe zawierają numer klatki i konfigurację kamery; pomiędzy nimi wszystkie parametry są interpolowane liniowo. Dzięki temu wariant CPU i GPU może być oceniany dla tej samej trajektorii, rozdzielczości i liczby klatek.
+
+W każdej klatce benchmark wykonuje pełną sekwencję: zastosowanie konfiguracji kamery, preprocessing, sortowanie, wyzerowanie licznika fragmentów, rasteryzację i odczyt wyników. Do pliku CSV zapisywane są: numer klatki, całkowity czas po stronie CPU, czas sortowania, czas GPU, liczba widocznych splatów oraz liczba fragmentów, które przeszły próg w shaderze. Na końcu obliczane są średnia, mediana i percentyl 99 dla czasów.
+
+Pomiar GPU korzysta z par zapytań \texttt{GL\_TIMESTAMP}. W aplikacji interaktywnej stosowane są dwa zestawy zapytań i nieblokujące sprawdzenie dostępności wyniku z wcześniejszej klatki. Chroni to pętlę interfejsu przed oczekiwaniem na kartę graficzną. Benchmark używa wariantu synchronicznego, ponieważ jego celem jest zapis wyniku przypisanego do konkretnej klatki, a nie maksymalizacja płynności interakcji.
+
+Opcjonalnie wskazana klatka benchmarku może zostać zapisana jako obraz referencyjny. Osobny tryb \texttt{--compare} wczytuje dwa obrazy o tych samych wymiarach i oblicza PSNR dla kanałów barwnych oraz SSIM dla luminancji w blokach $8\times8$. Pozwala to oddzielić ocenę zgodności obrazu od pomiaru wydajności i wykryć spadek jakości wizualnej po zmianie algorytmu sortowania albo preprocessingu.
+
+\section{Podsumowanie implementacji}
+\label{sec:impl_podsumowanie}
+
+Zaimplementowany potok utrzymuje dane wejściowe w niezmiennym buforze, a wszystkie wielkości zależne od kamery wyznacza równolegle na GPU. Odrzucanie i kompaktowanie ogranicza liczbę elementów przekazywanych do sortowania i rasteryzacji. Dwie wymienne metody sortowania umożliwiają bezpośrednie porównanie kosztu transferu i obliczeń procesora z rozwiązaniem pozostającym w pamięci karty. Instancyjne prostokąty oraz analityczna ewaluacja funkcji Gaussa kończą potok bez tworzenia osobnej geometrii dla każdego splatu.
+
+Warstwa interfejsu udostępnia te mechanizmy bez ingerencji w kod, a tryby diagnostyczne, histogramy i testy wewnętrzne wspierają analizę poprawności. Tryb wsadowy wykorzystuje te same klasy renderera i shadery co aplikacja interaktywna, dzięki czemu wyniki przedstawione w następnym rozdziale mogą odnosić się bezpośrednio do opisanej implementacji.
