@@ -16,6 +16,12 @@ struct BenchmarkArgs
     SortMethod sortMethod = SortMethod::GPU;
     int width = 1280;
     int height = 720;
+    float minOpacity = 0.0039f;
+    float scaleMultiplier = 1.0f;
+    float maxRadiusPx = 1024.0f;
+    int shDegree = 3;
+    size_t maxSplats = 0;
+    bool validateSort = false;
 
     int screenshotFrame = -1;
     std::string screenshotOut;

@@ -208,6 +208,8 @@ int main(int argc, char** argv)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_VISIBLE, benchArgs.enabled ? GLFW_FALSE : GLFW_TRUE);
+    if (benchArgs.enabled)
+        glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
 
     const int initW = benchArgs.enabled ? benchArgs.width : static_cast<int>(WINDOW_WIDTH);
     const int initH = benchArgs.enabled ? benchArgs.height : static_cast<int>(WINDOW_HEIGHT);

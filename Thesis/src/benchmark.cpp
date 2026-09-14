@@ -68,6 +68,12 @@ bool parseBenchmarkArgs(int argc, char** argv, BenchmarkArgs& args)
         else if (arg == "--out" && nextArgValue(argc, argv, i, val)) args.outCsvPath = val;
         else if (arg == "--width" && nextArgValue(argc, argv, i, val)) args.width = std::max(1, std::atoi(val.c_str()));
         else if (arg == "--height" && nextArgValue(argc, argv, i, val)) args.height = std::max(1, std::atoi(val.c_str()));
+        else if (arg == "--opacity" && nextArgValue(argc, argv, i, val)) args.minOpacity = std::clamp(std::strtof(val.c_str(), nullptr), 0.0f, 1.0f);
+        else if (arg == "--scale" && nextArgValue(argc, argv, i, val)) args.scaleMultiplier = std::max(0.0f, std::strtof(val.c_str(), nullptr));
+        else if (arg == "--max-radius" && nextArgValue(argc, argv, i, val)) args.maxRadiusPx = std::max(1.0f, std::strtof(val.c_str(), nullptr));
+        else if (arg == "--sh-degree" && nextArgValue(argc, argv, i, val)) args.shDegree = std::clamp(std::atoi(val.c_str()), 0, 3);
+        else if (arg == "--max-splats" && nextArgValue(argc, argv, i, val)) args.maxSplats = static_cast<size_t>(std::max(0, std::atoi(val.c_str())));
+        else if (arg == "--validate-sort") args.validateSort = true;
         else if (arg == "--screenshot-frame" && nextArgValue(argc, argv, i, val)) args.screenshotFrame = std::atoi(val.c_str());
         else if (arg == "--screenshot-out" && nextArgValue(argc, argv, i, val)) args.screenshotOut = val;
         else if (arg == "--sort" && nextArgValue(argc, argv, i, val))
@@ -97,11 +103,26 @@ int runBenchmark(GLFWwindow* window, SplatRenderer& renderer, Camera& camera,
         return 1;
     }
 
+    float msLoad = 0.f;
     try
     {
+        auto tLoadStart = std::chrono::steady_clock::now();
         auto splats = loadSplats(args.scenePath);
+        if (args.maxSplats > 0 && splats.size() > args.maxSplats)
+        {
+            std::vector<Splat> sampled;
+            sampled.reserve(args.maxSplats);
+            const double step = static_cast<double>(splats.size()) / static_cast<double>(args.maxSplats);
+            for (size_t i = 0; i < args.maxSplats; ++i)
+                sampled.push_back(splats[static_cast<size_t>(static_cast<double>(i) * step)]);
+            splats = std::move(sampled);
+        }
         renderer.upload(splats);
-        std::cout << "Benchmark: loaded " << splats.size() << " splats from " << args.scenePath << "\n";
+        glFinish();
+        auto tLoadEnd = std::chrono::steady_clock::now();
+        msLoad = std::chrono::duration<float, std::milli>(tLoadEnd - tLoadStart).count();
+        std::cout << "Benchmark: loaded " << splats.size() << " splats from " << args.scenePath
+            << " in " << msLoad << " ms\n";
     }
     catch (const std::exception& e)
     {
@@ -127,13 +148,47 @@ int runBenchmark(GLFWwindow* window, SplatRenderer& renderer, Camera& camera,
     msSortAll.reserve(args.frames);
     msGpuAll.reserve(args.frames);
 
-    RenderParams renderParams; // defaults match the interactive app's startup values
+    RenderParams renderParams;
+    renderParams.minOpacity = args.minOpacity;
+    renderParams.scaleMultiplier = args.scaleMultiplier;
+    renderParams.maxRadiusPx = args.maxRadiusPx;
+    renderParams.shDegree = args.shDegree;
     GpuTimer frameTimer;
     GpuTimer sortGpuTimer;
 
     std::cout << "Benchmark: " << args.frames << " frames, sort="
         << (args.sortMethod == SortMethod::GPU ? "GPU" : "CPU")
-        << ", " << fbW << "x" << fbH << ", out=" << args.outCsvPath << "\n";
+        << ", " << fbW << "x" << fbH
+        << ", opacity=" << renderParams.minOpacity
+        << ", scale=" << renderParams.scaleMultiplier
+        << ", max-radius=" << renderParams.maxRadiusPx
+        << ", sh-degree=" << renderParams.shDegree
+        << ", splats=" << renderer.getSplatCount()
+        << ", out=" << args.outCsvPath << "\n";
+
+    if (args.validateSort)
+    {
+        camera.applyConfig(path.sample(0.0f));
+        renderer.preprocess(shaders.computeShader, camera, screenSize, renderParams);
+        bool gatherOk = renderer.debugValidateGatherStage(shaders.gatherShader);
+        bool scanOk = renderer.debugValidateHistogramScanStage(shaders.gatherShader,
+            shaders.histogramShader, shaders.scanWorkgroupsShader, shaders.scanBinsShader);
+        bool scatterOk = renderer.debugValidateScatterStage(shaders.gatherShader,
+            shaders.histogramShader, shaders.scanWorkgroupsShader, shaders.scanBinsShader,
+            shaders.scatterShader);
+        bool compareOk = renderer.debugCompareSortMethods(camera, shaders.gatherShader,
+            shaders.histogramShader, shaders.scanWorkgroupsShader, shaders.scanBinsShader,
+            shaders.scatterShader);
+        renderer.sort(camera, SortMethod::GPU, shaders.gatherShader, shaders.histogramShader,
+            shaders.scanWorkgroupsShader, shaders.scanBinsShader, shaders.scatterShader);
+        bool monotonicOk = renderer.debugCheckSortMonotonic();
+        bool validationOk = gatherOk && scanOk && scatterOk && compareOk && monotonicOk;
+        std::cout << "Sort validation: gather=" << gatherOk << ", scan=" << scanOk
+            << ", scatter=" << scatterOk << ", cpu-gpu=" << compareOk
+            << ", monotonic=" << monotonicOk << "\n";
+        if (!validationOk)
+            return 2;
+    }
 
     for (int frame = 0; frame < args.frames; ++frame)
     {
@@ -146,10 +201,23 @@ int runBenchmark(GLFWwindow* window, SplatRenderer& renderer, Camera& camera,
 
         renderer.preprocess(shaders.computeShader, camera, screenSize, renderParams);
 
-        sortGpuTimer.begin();
-        renderer.sort(camera, args.sortMethod, shaders.gatherShader, shaders.histogramShader,
-            shaders.scanWorkgroupsShader, shaders.scanBinsShader, shaders.scatterShader);
-        float msSort = sortGpuTimer.endAndWaitMs();
+        float msSort = 0.f;
+        if (args.sortMethod == SortMethod::GPU)
+        {
+            sortGpuTimer.begin();
+            renderer.sort(camera, args.sortMethod, shaders.gatherShader, shaders.histogramShader,
+                shaders.scanWorkgroupsShader, shaders.scanBinsShader, shaders.scatterShader);
+            msSort = sortGpuTimer.endAndWaitMs();
+        }
+        else
+        {
+            auto tSortStart = std::chrono::steady_clock::now();
+            renderer.sort(camera, args.sortMethod, shaders.gatherShader, shaders.histogramShader,
+                shaders.scanWorkgroupsShader, shaders.scanBinsShader, shaders.scatterShader);
+            glFinish();
+            auto tSortEnd = std::chrono::steady_clock::now();
+            msSort = std::chrono::duration<float, std::milli>(tSortEnd - tSortStart).count();
+        }
         camera.onSortComplete();
 
         renderer.resetFragmentCounter();
@@ -209,6 +277,7 @@ int runBenchmark(GLFWwindow* window, SplatRenderer& renderer, Camera& camera,
     csv << "#summary,ms_total," << mean(msTotalAll) << ',' << percentile(msTotalAll, 0.5f) << ',' << percentile(msTotalAll, 0.99f) << '\n';
     csv << "#summary,ms_sort," << mean(msSortAll) << ',' << percentile(msSortAll, 0.5f) << ',' << percentile(msSortAll, 0.99f) << '\n';
     csv << "#summary,ms_gpu," << mean(msGpuAll) << ',' << percentile(msGpuAll, 0.5f) << ',' << percentile(msGpuAll, 0.99f) << '\n';
+    csv << "#summary,ms_load," << msLoad << ',' << msLoad << ',' << msLoad << '\n';
     csv.close();
 
     std::cout << "Wrote " << args.outCsvPath << "\n";
