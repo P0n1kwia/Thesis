@@ -1,0 +1,573 @@
+% !TEX root = ../main.tex
+\chapter{Testy i wyniki}
+\label{chap:testy_wyniki}
+
+W tym rozdziale przedstawiono sposób weryfikacji założeń przyjętych podczas projektowania systemu oraz wyniki pomiarów. Badania podzielono na trzy grupy: wydajność potoku renderowania, poprawność obrazu i weryfikację wymagań z rozdziału~\ref{chap:projekt_systemu}. Wszystkie wartości liczbowe pochodzą z trybu wsadowego aplikacji. Surowe wyniki zachowano w plikach CSV, dzięki czemu obliczenia można powtórzyć bez odczytywania wartości z wykresów.
+
+\section{Środowisko i metodyka}
+\label{sec:metodyka}
+
+\subsection{Stanowisko pomiarowe}
+
+Główne pomiary wykonano na jednym komputerze przenośnym. Jego konfigurację zestawiono w tabeli~\ref{tab:stanowisko}. W czasie pomiarów aplikacja była zbudowana w konfiguracji \texttt{Release}. Nie korzystano z debuggera ani z warstwy walidacyjnej OpenGL.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Specyfikacja stanowiska pomiarowego}
+  \label{tab:stanowisko}
+  \small
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabularx}{\textwidth}{
+      >{\raggedright\arraybackslash}p{0.25\textwidth}
+      >{\raggedright\arraybackslash}X}
+    \toprule
+    \textbf{Element} & \textbf{Konfiguracja} \\
+    \midrule
+    Procesor & Intel Core i5-11400H, 6 rdzeni i 12 wątków \\
+    Karta graficzna & NVIDIA GeForce RTX 3050 Ti Laptop GPU, 4~GiB VRAM \\
+    Pamięć operacyjna & 15,8~GiB RAM \\
+    System operacyjny & Microsoft Windows, wersja 25H2, kompilacja 26200.9445 \\
+    Sterownik GPU & NVIDIA 610.62 \\
+    API graficzne & OpenGL 4.3 Core \\
+    Kompilator & Microsoft Visual C++ 19.51.36252.0, standard C++20 \\
+    System budowania & CMake, generator Ninja, konfiguracja \texttt{Release} \\
+    Rozdzielczość bazowa & $1280\times720$ pikseli \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Dodatkową próbę zgodności wykonano na zintegrowanym układzie Intel UHD Graphics ze sterownikiem OpenGL \texttt{30.0.100.9864}. W tym przypadku celem nie był pomiar szybkości, lecz sprawdzenie, czy program uruchamia ten sam potok bez obecności CUDA i bez karty NVIDIA.
+
+\subsection{Sceny testowe}
+
+Do pomiarów wykorzystano trzy pliki dostępne w zasobach projektu. Są to sceny wnętrz, zapisane w nieskompresowanym formacie PLY. Ich dokładne pochodzenie nie zostało zapisane razem z plikami, dlatego w tabeli~\ref{tab:sceny_testowe} oznaczono je jako lokalne zasoby projektu. Nie przypisano im nazwy publicznego zbioru danych, której nie dałoby się potwierdzić.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Sceny wykorzystane w pomiarach}
+  \label{tab:sceny_testowe}
+  \small
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabularx}{\textwidth}{
+      >{\raggedright\arraybackslash}p{0.16\textwidth}
+      >{\raggedright\arraybackslash}p{0.15\textwidth}
+      >{\raggedright\arraybackslash}X
+      >{\raggedleft\arraybackslash}p{0.15\textwidth}
+      >{\raggedleft\arraybackslash}p{0.13\textwidth}}
+    \toprule
+    \textbf{Nazwa} & \textbf{Typ} & \textbf{Źródło} & \textbf{Liczba splatów} & \textbf{Plik [MB]} \\
+    \midrule
+    Bonsai & wnętrze & lokalny zasób projektu & 1 244 819 & 308,7 \\
+    Point cloud & wnętrze & lokalny zasób projektu & 1 157 141 & 287,0 \\
+    Room & wnętrze & lokalny zasób projektu & 1 593 376 & 395,2 \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Zbiór pozwala porównać sceny od 1,16 do 1,59 miliona splatów, ale nie daje planowanej początkowo rozpiętości od około 100 tysięcy do 6 milionów. Dla pomiaru samego sortowania zastosowano więc deterministyczne, równomierne podpróbkowanie sceny Bonsai. W ten sposób sprawdzono rozmiary od 1000 do 1~244~819 splatów wejściowych. Nie wykorzystano tych podpróbek do formułowania wniosków o jakości obrazu ani o wydajności całego potoku, ponieważ usuwanie splatów zmienia rozkład widoczności i przerysowanie. Brak sceny zbliżonej do 6 milionów jest ograniczeniem badania, a nie potwierdzeniem skalowania w tym zakresie.
+
+\subsection{Przebieg pomiaru}
+
+Tryb \texttt{--bench} tworzył ukryte okno o zadanym rozmiarze i wykonywał deterministyczny obrót kamery wokół punktu docelowego. Dla pomiarów głównych renderowano 200 klatek. Pierwsze 20 klatek miało tę samą pozycję kamery i zostało odrzuconych jako rozgrzewka. Pozostałe 180 klatek obejmowało pełny obrót z niewielką zmianą pochylenia. Serie dotyczące parametrów renderowania i skalowania sortowania liczyły 100 klatek, z których odrzucano pierwszych 10.
+
+Każdy wariant uruchomiono trzy razy w osobnym procesie. Najpierw wyznaczano medianę z klatek pojedynczego przebiegu, a następnie medianę z trzech otrzymanych wartości. Rozrzut podawany w tabelach jest zakresem od najmniejszej do największej mediany przebiegu. Takie zestawienie jest odporne na pojedyncze skoki czasu i jednocześnie pokazuje, czy różnica między wariantami jest większa od zmienności między uruchomieniami.
+
+W pliku CSV zapisywano następujące wielkości:
+\begin{itemize}
+  \item \texttt{ms\_total} - czas od rozpoczęcia przetwarzania klatki do
+        zakończenia pracy GPU;
+  \item \texttt{ms\_gpu} - czas wszystkich poleceń GPU obejmujących
+        preprocessing, sortowanie i rysowanie;
+  \item \texttt{ms\_sort} - czas wybranego wariantu sortowania;
+  \item \texttt{visible\_splats} - liczba splatów pozostałych po odrzuceniu;
+  \item \texttt{drawn\_fragments} - liczba fragmentów, które przeszły próg
+        elipsy i nieprzezroczystości w shaderze fragmentów.
+\end{itemize}
+
+Licznik przerysowania zdefiniowano jako
+\begin{equation}
+  O = \frac{F}{W\cdot H},
+  \label{eq:overdraw}
+\end{equation}
+gdzie $F$ oznacza liczbę narysowanych fragmentów, a $W$ i $H$ są wymiarami obrazu. Wartość $O=1$ oznacza średnio jeden zaakceptowany fragment na piksel. Nie jest to liczba splatów pokrywających każdy piksel przed odrzuceniem, lecz miara rzeczywistej pracy wykonywanej w zastosowanym shaderze.
+
+Pomiar ma świadome ograniczenia. Przed każdą klatką i podczas odczytu wyników wywoływane jest \texttt{glFinish()}, dlatego polecenia kolejnych klatek nie nakładają się. Okno pozostaje ukryte, a odczyt licznika fragmentów wymusza synchronizację. Dodatkowo samo atomowe zliczanie fragmentów zwiększa koszt shadera. Wartości \texttt{ms\_total} należy zatem traktować jako wynik instrumentowanego trybu pomiarowego, a nie jako dokładny odpowiednik czasu odczuwanego w trybie interaktywnym. Synchronizacja jest jednak taka sama w porównywanych wariantach, co pozwala badać relacje między nimi. Wywołanie \texttt{glfwSwapInterval(1)} występuje po zakończeniu pomiaru klatki, nie wchodzi więc bezpośrednio do \texttt{ms\_total}, ale może wpływać na taktowanie mobilnej karty między klatkami.
+
+\section{Wydajność}
+\label{sec:wydajnosc}
+
+\subsection{Czas klatki i udział sortowania}
+
+Tabela~\ref{tab:wydajnosc_scen} przedstawia wyniki bazowe przy rozdzielczości $1280\times720$, progu nieprzezroczystości 0,0039, mnożniku skali równym 1 i stopniu SH równym 3. Kolumna ``pozostałe GPU'' jest różnicą między \texttt{ms\_gpu} a \texttt{ms\_sort}; obejmuje wspólnie preprocessing i rysowanie. Obecna instrumentacja nie rozdziela tych dwóch etapów, dlatego nie przypisano im osobnych, niezmierzonych wartości.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Wydajność całego potoku dla badanych scen}
+  \label{tab:wydajnosc_scen}
+  \scriptsize
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabular}{lrrrrrr}
+    \toprule
+    \textbf{Scena} & \textbf{GPU [ms]} & \textbf{FPS} & \textbf{Sort [ms]} &
+    \textbf{Pozostałe GPU [ms]} & \textbf{Udział sort.} & \textbf{CPU [ms]} \\
+    \midrule
+    Bonsai      & 5,09 & 196,5 & 0,591 & 4,445 & 11,7\% & 15,13 \\
+    Point cloud & 4,44 & 225,1 & 0,574 & 3,825 & 13,1\% & 13,14 \\
+    Room        & 7,85 & 127,5 & 0,745 & 6,953 & 9,7\%  & 20,95 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{wydajnosc_scen}
+  \caption{Porównanie czasu klatki z sortowaniem CPU i GPU}
+  \label{rys:wydajnosc_scen}
+\end{figure}
+
+Zakres median pomiędzy trzema przebiegami wyniósł 5,05-5,42~ms dla Bonsai, 4,43-4,80~ms dla Point cloud i 7,81-8,01~ms dla Room w ścieżce GPU. Dla ścieżki CPU było to odpowiednio 13,30-15,76~ms, 13,03-13,20~ms i 18,75-21,39~ms. Różnica między metodami jest większa niż rozrzut pomiarów dla każdej sceny. Zmiana sortowania z CPU na GPU skróciła czas całej klatki od 2,67 raza dla Room do 2,97 raza dla Bonsai.
+
+Najważniejszy jest udział sortowania w ścieżce GPU. Wynosi on od 9,7 do 13,1\% czasu pracy karty. Oznacza to, że po przeniesieniu sortowania na GPU nie jest ono dominującym składnikiem klatki. Pozostały czas przypada na rzutowanie, odrzucanie, przygotowanie danych ekranowych i rasteryzację elips. Wynik ten bezpośrednio potwierdza drugą część wymagania WN-03. Pierwsza część również została spełniona dla badanych scen: najwolniejsza scena osiągała około 127 klatek na sekundę w instrumentowanym trybie wsadowym.
+
+\subsection{Punkt opłacalności sortowania na GPU}
+
+Pomiar punktu przecięcia wykonano na podpróbkach Bonsai. Oś pozioma na rysunku~\ref{rys:sortowanie_cpu_gpu} przedstawia liczbę splatów rzeczywiście widocznych po preprocessingu, a nie rozmiar pliku wejściowego. Wybrane wartości z całej serii zebrano w tabeli~\ref{tab:sortowanie_skala}.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Czas sortowania CPU i GPU w funkcji liczby widocznych splatów}
+  \label{tab:sortowanie_skala}
+  \small
+  \renewcommand{\arraystretch}{1.12}
+  \begin{tabular}{rrrr}
+    \toprule
+    \textbf{Widoczne splaty} & \textbf{CPU [ms]} & \textbf{GPU [ms]} & \textbf{CPU/GPU} \\
+    \midrule
+        201 & 0,108 & 0,500 & 0,22 \\
+      2 025 & 0,174 & 0,554 & 0,31 \\
+      5 102 & 0,343 & 0,160 & 2,15 \\
+     20 434 & 1,025 & 0,173 & 5,92 \\
+     51 003 & 1,703 & 0,257 & 6,63 \\
+    102 039 & 3,592 & 0,284 & 12,66 \\
+    254 048 & 9,740 & 0,598 & 16,29 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{sortowanie_cpu_gpu}
+  \caption{Czas sortowania w funkcji liczby widocznych splatów}
+  \label{rys:sortowanie_cpu_gpu}
+\end{figure}
+
+Dla około 2 tysięcy widocznych splatów szybszy pozostaje procesor. Stały koszt uruchamiania kolejnych shaderów sortowania pozycyjnego jest wtedy większy niż czas prostej operacji na CPU. Punkt przecięcia leży pomiędzy 2025 a 5102 widocznymi splatami. Od około 5 tysięcy ścieżka GPU staje się opłacalna, a jej przewaga rośnie wraz z rozmiarem danych. Dla pełnej sceny Bonsai samo sortowanie GPU było 16,29 raza szybsze od CPU. Wynik uzasadnia pozostawienie dwóch ścieżek: CPU jest użyteczne dla małych scen, do diagnostyki i jako wynik referencyjny, natomiast GPU jest właściwym wyborem dla typowych scen 3DGS.
+
+\subsection{Skalowanie z rozdzielczością i przerysowanie}
+
+Rozdzielczość zmieniano flagami \texttt{-width} i \texttt{-height}, bez zmiany trajektorii i parametrów sceny Bonsai. Tabela~\ref{tab:rozdzielczosc} pokazuje, że liczba widocznych splatów jest stała, natomiast liczba fragmentów rośnie razem z liczbą pikseli.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Skalowanie sceny Bonsai z rozdzielczością}
+  \label{tab:rozdzielczosc}
+  \small
+  \renewcommand{\arraystretch}{1.12}
+  \begin{tabular}{lrrrrr}
+    \toprule
+    \textbf{Rozdzielczość} & \textbf{Czas [ms]} & \textbf{FPS} &
+    \textbf{Widoczne} & \textbf{Fragmenty [mln]} & \textbf{$O$} \\
+    \midrule
+    $1280\times720$  & 5,09  & 196,5 & 253 717 & 26,84 & 29,13 \\
+    $1920\times1080$ & 7,88  & 126,8 & 253 717 & 56,41 & 27,20 \\
+    $2560\times1440$ & 10,83 & 92,3  & 253 717 & 97,22 & 26,37 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{skalowanie_rozdzielczosci}
+  \caption{Względna zmiana czasu klatki i liczby fragmentów względem 720p}
+  \label{rys:skalowanie_rozdzielczosci}
+\end{figure}
+
+Przejście z 720p do 1080p zwiększyło liczbę fragmentów 2,10 raza, a czas klatki 1,55 raza. Dla 1440p fragmentów było 3,62 raza więcej, natomiast czas wzrósł 2,13 raza. Potok nie jest więc ograniczony wyłącznie wypełnianiem ekranu. Część kosztu, między innymi preprocessing i sortowanie, zależy od liczby splatów, a nie od liczby pikseli. Jednocześnie wyraźny wzrost czasu wraz z rozdzielczością potwierdza, że rasteryzacja billboardów jest istotnym składnikiem klatki.
+
+Znaczenie przerysowania widać również przy porównaniu scen w tej samej rozdzielczości. Wyniki zebrano w tabeli~\ref{tab:overdraw_scen}.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Przerysowanie a czas klatki w ścieżce GPU}
+  \label{tab:overdraw_scen}
+  \small
+  \renewcommand{\arraystretch}{1.12}
+  \begin{tabular}{lrrrr}
+    \toprule
+    \textbf{Scena} & \textbf{Widoczne splaty} & \textbf{Fragmenty [mln]} &
+    \textbf{$O$} & \textbf{Czas [ms]} \\
+    \midrule
+    Bonsai      & 253 717 & 26,84 & 29,13 & 5,09 \\
+    Point cloud & 249 153 & 26,24 & 28,47 & 4,44 \\
+    Room        & 257 530 & 50,16 & 54,43 & 7,85 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Sceny mają zbliżoną liczbę widocznych splatów, lecz Room generuje prawie dwa razy więcej fragmentów niż pozostałe. Jest też wyraźnie wolniejsza. Wskazuje to na koszt dużych, nakładających się elips, którego nie ujawniłaby sama liczba splatów. Zależność jest zgodna z przyjętym modelem kosztu, ale trzy sceny to za mało, aby traktować ją jako analizę statystyczną.
+
+\subsection{Wpływ parametrów, pamięć i wczytywanie}
+
+Wpływ progu nieprzezroczystości przedstawiono łącznie z jakością obrazu w sekcji~\ref{subsec:jakosc_wydajnosc}. Podniesienie progu z 0,0039 do 0,10 zmniejszyło średnią liczbę widocznych splatów z 254 048 do 177 029, a liczbę fragmentów z 26,85 do 21,22 miliona. Czas klatki skrócił się z 5,11 do 4,03~ms. Potwierdza to działanie wczesnego odrzucania według nieprzezroczystości i kompaktowania listy widocznych elementów.
+
+Nie wykonano osobnej ablacji pamięci podręcznej preprocessingu, odrzucania po nieprzezroczystości i kompaktowania. W badanej wersji nie występują flagi, które wyłączają te mechanizmy niezależnie, a przygotowanie odrębnych wariantów kompilacji zmieniałoby więcej niż jeden element potoku. Wyniki opisują zatem końcowy system, ale nie pozwalają przypisać przyspieszenia każdej optymalizacji oddzielnie. Pamięć podręczna preprocessingu ma ponadto ograniczone znaczenie w teście z kamerą poruszaną w każdej mierzonej klatce.
+
+Z modelu pamięci opisanego w sekcji~\ref{gpudata} wynika zależność
+\begin{equation}
+  M(N) = 304N + 64\left\lceil\frac{N}{256}\right\rceil + O(1).
+  \label{eq:vram_pomiar}
+\end{equation} 
+Oszacowania dla scen przedstawiono w tabeli~\ref{tab:vram_scen}. Liniowy
+składnik $304N$ dominuje, dlatego podwojenie liczby splatów w przybliżeniu podwaja zajętość pamięci.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Szacowane zajęcie pamięci karty graficznej}
+  \label{tab:vram_scen}
+  \small
+  \begin{tabular}{lrr}
+    \toprule
+    \textbf{Scena} & \textbf{Liczba splatów} & \textbf{Pamięć [MiB]} \\
+    \midrule
+    Point cloud & 1 157 141 & 335,8 \\
+    Bonsai      & 1 244 819 & 361,2 \\
+    Room        & 1 593 376 & 462,3 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Największą rzeczywiście uruchomioną sceną była Room i zmieściła się na karcie z 4~GiB VRAM. Nie jest to jednak wyznaczenie maksymalnej pojemności. Wzór nie obejmuje między innymi buforów ramki, kodu sterownika i innych zasobów procesu, a większej sceny nie było w zbiorze testowym.
+
+Czas wczytania obejmował parsowanie PLY, konwersję danych, utworzenie buforów i zakończone przesłanie na GPU. Wyniki zawiera tabela~\ref{tab:wczytywanie}.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Czas wczytania sceny}
+  \label{tab:wczytywanie}
+  \small
+  \renewcommand{\arraystretch}{1.12}
+  \begin{tabular}{lrrr}
+    \toprule
+    \textbf{Scena} & \textbf{Rozmiar [MB]} & \textbf{Czas [ms]} & \textbf{Zakres [ms]} \\
+    \midrule
+    Point cloud & 287,0 & 2 967 & 2 852-3 008 \\
+    Bonsai      & 308,7 & 3 197 & 3 132-3 224 \\
+    Room        & 395,2 & 3 943 & 3 747-4 226 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Czas rośnie wraz z rozmiarem pliku i wynosi od około 3 do 4 sekund. Ponieważ wczytywanie odbywa się w wątku głównym, w tym czasie interfejs nie reaguje. Jest to mierzalny koszt decyzji o jednowątkowej architekturze aplikacji.
+
+\section{Poprawność wizualna}
+\label{sec:poprawnosc_wizualna}
+
+\subsection{Zgodność ścieżek CPU i GPU}
+
+Dla tej samej pozycji kamery zapisano obraz po sortowaniu CPU i po sortowaniu GPU. Porównanie dało PSNR równy 93,36~dB i SSIM równy 1,000000. Obrazy nie są identyczne bitowo, lecz różnica jest poniżej progu widoczności. Jej źródłem mogą być remisy kluczy głębokości i inna kolejność elementów o tej samej wartości klucza. Tak wysoki PSNR oraz SSIM równy jedności pozwalają traktować obie ścieżki jako zgodne wizualnie.
+
+Niezależnie uruchomiono test WF-13 na podpróbce 100 tysięcy splatów. Test sprawdzał etap zbierania kluczy, histogramy i sumy prefiksowe, rozrzucanie elementów, zgodność wyniku CPU-GPU oraz monotoniczność końcowej kolejności. Wszystkie pięć sprawdzeń zakończyło się wynikiem poprawnym.
+
+Nie wykonano porównania z obrazami referencyjnymi pochodzącymi z procesu treningowego. Razem ze scenami nie zapisano referencyjnych kamer i obrazów, a użycie dowolnego zdjęcia nie gwarantowałoby zgodności pozy i parametrów projekcji. Z tego powodu nie podano PSNR ani SSIM jako bezwzględnej miary zgodności z oryginalnym rendererem 3DGS. Poniższe pomiary są porównaniami wewnętrznymi, dla dokładnie tej samej kamery.
+
+Zastosowana implementacja SSIM jest uproszczona. Obraz jest dzielony na niezachodzące bloki $8\times8$, a wynik powstaje na podstawie luminancji, średniej, wariancji i kowariancji w każdym bloku. Metoda nie stosuje okna gaussowskiego i pomija niepełny fragment obrazu na brzegu. Nadaje się do powtarzalnego porównania wariantów tego programu, ale nie powinna być przedstawiana jako pełna implementacja standardowej wieloskalowej miary SSIM.
+
+\subsection{Krzywa jakość-wydajność}
+\label{subsec:jakosc_wydajnosc}
+
+Wpływ progu nieprzezroczystości zbadano na scenie Bonsai. Obraz bazowy powstał dla progu 0,0039 i stopnia SH równego 3. Każdy pozostały wariant porównano z tym obrazem przy tej samej pozycji kamery.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Jakość i wydajność w funkcji progu nieprzezroczystości}
+  \label{tab:opacity_quality}
+  \scriptsize
+  \renewcommand{\arraystretch}{1.12}
+  \begin{tabular}{rrrrrrr}
+    \toprule
+    \textbf{Próg} & \textbf{FPS} & \textbf{Czas [ms]} & \textbf{Widoczne} &
+    \textbf{Fragmenty [mln]} & \textbf{PSNR [dB]} & \textbf{SSIM} \\
+    \midrule
+    0,0039 & 195,8 & 5,11 & 254 048 & 26,85 & $\infty$ & 1,000000 \\
+    0,0100 & 204,0 & 4,90 & 232 073 & 26,64 & 54,17 & 0,999633 \\
+    0,0300 & 220,7 & 4,53 & 213 702 & 24,69 & 45,30 & 0,997431 \\
+    0,0500 & 232,5 & 4,30 & 200 512 & 23,25 & 39,02 & 0,988669 \\
+    0,1000 & 247,9 & 4,03 & 177 029 & 21,22 & 35,68 & 0,980463 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{jakosc_wydajnosc_opacity}
+  \caption{Krzywa jakości i wydajności dla progu nieprzezroczystości}
+  \label{rys:jakosc_wydajnosc_opacity}
+\end{figure}
+
+Próg 0,01 daje wzrost z 195,8 do 204,0 FPS przy PSNR 54,17~dB i SSIM 0,999633. Jest to niewielki, ale praktycznie bezpieczny kompromis. Próg 0,03 zwiększa wydajność do 220,7 FPS, jednak PSNR spada do 45,30~dB. Najwyższy badany próg kupuje 26,6\% więcej klatek na sekundę względem ustawienia bazowego kosztem spadku PSNR do 35,68~dB. Wynik pokazuje, że próg nie powinien być zwiększany wyłącznie na podstawie FPS; użytkownik powinien kontrolować również obraz i liczbę odrzuconych elementów.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{minipage}{0.49\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{../results/chapter5/params_op0039_sh3_r1.png}
+    \small (a) próg 0,0039
+  \end{minipage}\hfill
+  \begin{minipage}{0.49\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{../results/chapter5/params_op0100_sh3_r1.png}
+    \small (b) próg 0,10
+  \end{minipage}
+  \caption{Porównanie obrazu dla bazowego i podwyższonego progu nieprzezroczystości}
+  \label{rys:opacity_compare}
+\end{figure}
+
+Druga seria dotyczyła liczby używanych pasm harmonik sferycznych. Wyniki zawiera tabela~\ref{tab:sh_quality}. Stopień 3 był obrazem bazowym.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Jakość i wydajność w funkcji stopnia SH}
+  \label{tab:sh_quality}
+  \small
+  \renewcommand{\arraystretch}{1.12}
+  \begin{tabular}{rrrrr}
+    \toprule
+    \textbf{Stopień SH} & \textbf{Czas [ms]} & \textbf{FPS} & \textbf{PSNR [dB]} & \textbf{SSIM} \\
+    \midrule
+    0 & 5,09 & 196,3 & 33,31 & 0,978705 \\
+    1 & 5,13 & 194,8 & 34,25 & 0,982289 \\
+    2 & 5,29 & 189,0 & 37,13 & 0,988097 \\
+    3 & 5,11 & 195,8 & $\infty$ & 1,000000 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Różnice czasu mieszczą się w zakresie rozrzutu pomiarów i nie tworzą monotonicznego trendu. Ograniczenie stopnia SH obniża jakość, ale w tej implementacji nie daje mierzalnego zysku FPS. Wynika to z faktu, że liczba widocznych splatów, liczba fragmentów, rozmiar struktury i pozostałe etapy potoku nie zmieniają się. Dla badanego sprzętu uzasadnione jest więc pozostawienie stopnia 3 jako wartości domyślnej.
+
+\subsection{Artefakty i wykorzystanie warstwy analitycznej}
+
+Podczas oglądania scen zidentyfikowano trzy grupy artefaktów. Ich przyczyny wynikają bezpośrednio z decyzji opisanych w rozdziale projektowym.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Zaobserwowane artefakty obrazu i ich przyczyny}
+  \label{tab:artefakty}
+  \small
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabularx}{\textwidth}{
+      >{\raggedright\arraybackslash}p{0.25\textwidth}
+      >{\raggedright\arraybackslash}p{0.30\textwidth}
+      >{\raggedright\arraybackslash}X}
+    \toprule
+    \textbf{Artefakt} & \textbf{Sytuacja} & \textbf{Przyczyna} \\
+    \midrule
+    Krótkie zmiany jasności i kolejności & ruch kamery w obszarze wielu
+    nakładających się splatów & globalne sortowanie środków po głębokości;
+    elementy o podobnym kluczu mogą zamieniać kolejność \\
+    Duże obszary miękkiego koloru & obrzeża sceny i obszary słabiej pokryte
+    danymi treningowymi & brak przycinania do kafli oraz rasteryzacja całych
+    billboardów ograniczonych jedynie maksymalnym promieniem \\
+    Wydłużone elipsy & powierzchnie oglądane pod kątem ślizgowym & rzutowanie
+    anizotropowej kowariancji 3D do przestrzeni ekranu \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.9\textwidth]{../results/chapter5/room.png}
+  \caption{Scena Room, dla której zmierzono najwyższy współczynnik przerysowania}
+  \label{rys:room_overdraw}
+\end{figure}
+\clearpage
+
+Scena Room pokazuje, dlaczego warstwa analityczna nie jest jedynie dodatkiem do podglądu obrazu. Sama liczba widocznych elementów wynosi około 258 tysięcy, czyli prawie tyle samo co w dwóch pozostałych scenach. Dopiero licznik fragmentów wskazuje 50,16 miliona operacji i współczynnik przerysowania 54,43. Panel ``Analiza'' pozwala następnie sprawdzić histogram rozmiaru elipsy ekranowej i histogram nieprzezroczystości. Długi ogon histogramu rozmiaru wskazuje duże splaty odpowiedzialne za koszt rasteryzacji, a histogram nieprzezroczystości pozwala ocenić, ile elementów może zostać odrzuconych po podniesieniu progu. W ten sposób statystyki wyjaśniają, dlaczego scena jest wolniejsza, mimo podobnej liczby splatów. Ilościowym potwierdzeniem diagnozy jest pomiar przerysowania, a nie sam wygląd zrzutu ekranu.
+
+\section{Weryfikacja wymagań}
+\label{sec:weryfikacja_wymagan}
+
+Wymagania funkcjonalne sprawdzono przez testy trybu wsadowego, testy funkcjonalne interfejsu, zapisane obrazy i inspekcję ścieżek obsługi błędów. Wyniki podzielono na dwie części tabeli ze względu na jej rozmiar.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Weryfikacja wymagań funkcjonalnych WF-01-WF-08}
+  \label{tab:weryfikacja_wf_a}
+  \scriptsize
+  \renewcommand{\arraystretch}{1.12}
+  \begin{tabularx}{\textwidth}{
+      >{\raggedright\arraybackslash}p{0.08\textwidth}
+      >{\raggedright\arraybackslash}p{0.25\textwidth}
+      >{\raggedright\arraybackslash}X
+      >{\raggedright\arraybackslash}p{0.16\textwidth}}
+    \toprule
+    \textbf{Id.} & \textbf{Sposób weryfikacji} & \textbf{Wynik} & \textbf{Stan} \\
+    \midrule
+    WF-01 & test okna, upuszczenia i CLI & okno i upuszczenie działają;
+    ścieżkę pliku obsługuje tryb \texttt{-bench}, ale brak zwykłego argumentu
+    uruchamiającego scenę w interfejsie & częściowo \\
+    WF-02 & PLY bez pól \texttt{f\_rest} & wczytano i wyrenderowano jeden splat & spełnione \\
+    WF-03 & uszkodzony PLY i inspekcja obsługi wyjątku & czytelny błąd;
+    w trybie interaktywnym dotychczasowa scena jest zachowana & spełnione \\
+    WF-04 & test funkcjonalny myszy & obrót, przesunięcie celu i zoom zmieniają kamerę & spełnione \\
+    WF-05 & zapis, odczyt i usunięcie ustawienia & ustawienia są zachowane między uruchomieniami & spełnione \\
+    WF-06 & test kolejności i render scen & kolejność jest monotoniczna od najdalszego elementu & spełnione \\
+    WF-07 & test panelu i flag benchmarku & wszystkie parametry zmieniają wynik bez ponownego wczytania & spełnione \\
+    WF-08 & test trybów debug & dostępne są barwa, głębokość, alfa,
+    przerysowanie, kontur i identyfikator & spełnione \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Weryfikacja wymagań funkcjonalnych WF-09-WF-16}
+  \label{tab:weryfikacja_wf_b}
+  \scriptsize
+  \renewcommand{\arraystretch}{1.12}
+  \begin{tabularx}{\textwidth}{
+      >{\raggedright\arraybackslash}p{0.08\textwidth}
+      >{\raggedright\arraybackslash}p{0.25\textwidth}
+      >{\raggedright\arraybackslash}X
+      >{\raggedright\arraybackslash}p{0.16\textwidth}}
+    \toprule
+    \textbf{Id.} & \textbf{Sposób weryfikacji} & \textbf{Wynik} & \textbf{Stan} \\
+    \midrule
+    WF-09 & test podzielonego ekranu & dwa tryby są renderowane jednocześnie & spełnione \\
+    WF-10 & porównanie panelu i CSV & dostępne są czasy, FPS, liczności i oszacowanie VRAM & spełnione \\
+    WF-11 & test panelu Analiza & histogramy nieprzezroczystości, skali i rozmiaru są dostępne & spełnione \\
+    WF-12 & przełączenie CPU/GPU podczas pracy & obie ścieżki działają dla tej samej sceny & spełnione \\
+    WF-13 & automatyczny test sortowania & pięć etapów walidacji zakończonych poprawnie & spełnione \\
+    WF-14 & zapis PNG & zapisano obrazy w rozdzielczości benchmarku & spełnione \\
+    WF-15 & trzy powtórzenia trajektorii & CSV ma zgodne pozycje kamery i liczbę klatek & spełnione \\
+    WF-16 & porównanie obrazów & wyznaczono PSNR i blokowy SSIM & spełnione \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Weryfikację wymagań pozafunkcjonalnych przedstawiono w tabeli~\ref{tab:weryfikacja_wn}. Status ``częściowo'' oznacza, że wymaganie zostało sprawdzone tylko w węższym zakresie niż zapisano w rozdziale trzecim.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Weryfikacja wymagań pozafunkcjonalnych}
+  \label{tab:weryfikacja_wn}
+  \scriptsize
+  \renewcommand{\arraystretch}{1.12}
+  \begin{tabularx}{\textwidth}{
+      >{\raggedright\arraybackslash}p{0.08\textwidth}
+      >{\raggedright\arraybackslash}p{0.24\textwidth}
+      >{\raggedright\arraybackslash}X
+      >{\raggedright\arraybackslash}p{0.16\textwidth}}
+    \toprule
+    \textbf{Id.} & \textbf{Sposób weryfikacji} & \textbf{Wynik} & \textbf{Stan} \\
+    \midrule
+    WN-01 & uruchomienie na NVIDIA i Intel UHD & ten sam potok OpenGL 4.3 działa bez CUDA; test Intel obejmował małą scenę & spełnione w zakresie testu \\
+    WN-02 & kompilacja platformowa & kompilacja i działanie potwierdzone w Windows; Linux nie został uruchomiony & częściowo \\
+    WN-03 & pomiar 720p i udział sortowania & 127-225 FPS, sortowanie GPU stanowi 9,7-13,1\% czasu GPU & spełnione \\
+    WN-04 & model rozmiaru buforów & zależność liniowa; największa badana scena zajmuje około 462,3 MiB & spełnione \\
+    WN-05 & deterministyczna ścieżka, trzy przebiegi & mediany są powtarzalne, a zakres podano razem z wynikiem & spełnione \\
+    WN-06 & testy błędnych i niepełnych danych & błędy są obsłużone bez niekontrolowanego zakończenia & spełnione \\
+    WN-07 & inspekcja CMake i czysty build & wersje zależności są przypięte, a GLAD powstaje podczas konfiguracji & spełnione \\
+    WN-08 & inspekcja architektury & etapy są rozdzielone shaderami i buforami, ale nie wykonano eksperymentu z nowym etapem & częściowo \\
+    WN-09 & test interfejsu & funkcje są dostępne w jednym panelu bez edycji kodu & spełnione \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Odporność na dane wejściowe}
+
+Przypadki testowe dla WF-03 i WN-06 przedstawiono w tabeli~\ref{tab:testy_odpornosci}. Plik bez właściwości opcjonalnych zawierał jeden poprawny splat i jedynie zestaw pól podstawowych. Plik pusty miał poprawny nagłówek PLY i liczbę wierzchołków równą zero.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Testy odporności wczytywania scen}
+  \label{tab:testy_odpornosci}
+  \small
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabularx}{\textwidth}{
+      >{\raggedright\arraybackslash}p{0.22\textwidth}
+      >{\raggedright\arraybackslash}p{0.31\textwidth}
+      >{\raggedright\arraybackslash}X}
+    \toprule
+    \textbf{Przypadek} & \textbf{Oczekiwany wynik} & \textbf{Uzyskany wynik} \\
+    \midrule
+    Brak pól opcjonalnych & wartości domyślne i poprawny render & wczytano 1 splat, render zakończył się poprawnie \\
+    Pusta scena & brak awarii, 0 splatów & wczytano i wyrenderowano pustą scenę \\
+    Uszkodzony PLY & komunikat bez niekontrolowanej awarii & parser zwrócił czytelną informację; tryb wsadowy zakończył się kodem błędu \\
+    Złe rozszerzenie & odrzucenie przed parsowaniem & ścieżka interaktywna odrzuca plik niebędący PLY \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Próba na Intel UHD potwierdziła utworzenie kontekstu OpenGL 4.3, wczytanie małej sceny, wykonanie sortowania i zapis wiersza CSV. Jest to praktyczny dowód, że podstawowy potok nie wymaga CUDA ani sterownika NVIDIA. Nie zastępuje on jednak pełnego pomiaru dużych scen na drugim producencie. Kompilacji i uruchomienia w systemie Linux nie wykonano, dlatego druga część WN-02 pozostaje niezweryfikowana.
+
+\subsection{Powrót do porównania narzędzi}
+
+Tabela~\ref{tab:porownanie_wynik} uzupełnia zestawienie z rozdziału pierwszego o system wykonany w ramach pracy. Nie podano porównawczego FPS dla SuperSplat ani 3DGS.cpp, ponieważ aplikacje nie zostały zmierzone na tej samej scenie, kamerze i stanowisku. Zestawienie dotyczy więc potwierdzonych cech, a nie nieporównywalnych wartości wydajności.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Porównanie narzędzi uzupełnione o wykonany system}
+  \label{tab:porownanie_wynik}
+  \scriptsize
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabularx}{\textwidth}{
+      >{\raggedright\arraybackslash}p{0.17\textwidth}
+      >{\raggedright\arraybackslash}X
+      >{\raggedright\arraybackslash}X
+      >{\raggedright\arraybackslash}X
+      >{\raggedright\arraybackslash}X}
+    \toprule
+    \textbf{Kryterium} & \textbf{splatviz} & \textbf{SuperSplat} & \textbf{3DGS.cpp} & \textbf{Wykonany system} \\
+    \midrule
+    Technologia & Python, CUDA, ImGui & WebGL 2 & C++, Vulkan & C++20, OpenGL 4.3, ImGui \\
+    Platforma & Linux/Windows, NVIDIA & przeglądarka & Windows, Linux, macOS, iOS & Windows potwierdzony; Linux niezweryfikowany \\
+    Wizualizacja & zaawansowana & dojrzała, WebXR & bazowa & interaktywna i tryby debug \\
+    Analityka & rozbudowana & podstawowa & brak & statystyki, histogramy, overdraw, PSNR/SSIM \\
+    Edycja & minimalna przez kod & rozbudowana & brak & poza zakresem \\
+    Format & PLY, YML & PLY i formaty skompresowane & PLY & PLY \\
+    Zależność od CUDA & tak & nie & nie & nie; uruchomiono na NVIDIA i Intel \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\section{Omówienie wyników}
+\label{sec:omowienie_wynikow}
+
+W badanym zakresie występują trzy reżimy pracy. Dla kilku tysięcy widocznych splatów koszt uruchomienia potoku sortowania GPU jest zbyt duży i korzystniejsza jest ścieżka CPU. Po przekroczeniu około 5 tysięcy elementów GPU zaczyna być szybsze, a dla typowej sceny różnica samego sortowania przekracza jeden rząd wielkości. Po zastosowaniu sortowania GPU wąskim gardłem przestaje być kolejność elementów. Większość czasu przypada na preprocessing i rasteryzację.
+
+Rozdzielczość i przerysowanie rozdzielają kolejne dwa przypadki. Wzrost liczby pikseli 4 razy między 720p i 1440p zwiększa czas około 2,13 raza, ponieważ część pracy nadal zależy wyłącznie od liczby splatów. Równocześnie scena Room, która ma niemal tyle samo widocznych splatów co pozostałe, generuje prawie dwa razy więcej fragmentów i jest najwolniejsza. Oznacza to, że dalsza optymalizacja powinna dotyczyć ograniczenia powierzchni rasteryzowanych billboardów lub przycinania do kafli, a nie tylko przyspieszania sortowania.
+
+Próg nieprzezroczystości jest rzeczywistym regulatorem kompromisu. W badanej scenie można uzyskać niewielki wzrost wydajności bez widocznej utraty jakości przy progu 0,01. Dalsze zwiększanie progu daje coraz więcej FPS, ale usuwa też wkład słabych splatów i obniża PSNR. Stopień SH zachowuje się inaczej: jego zmniejszenie pogarsza obraz bez stabilnego zysku czasu. Oba wyniki uzasadniają obecność parametrów i metryk w jednym panelu - pojedyncza liczba FPS nie wystarcza do wyboru ustawienia.
+
+Najważniejsze zagrożenia dla trafności wyników są następujące:
+\begin{itemize}
+  \item pomiary wykonano na jednym komputerze, jednej głównej karcie i jednej
+        wersji sterownika;
+  \item mobilne GPU zmienia taktowanie zależnie od temperatury i stanu
+        energetycznego, co jest widoczne w rozrzucie osobnych uruchomień;
+  \item każda scena korzystała z tej samej ogólnej trajektorii, która nie musi
+        jednakowo dobrze obejmować jej najważniejszych fragmentów;
+  \item trzy sceny pochodzą z wąskiego zakresu 1,16-1,59 miliona splatów i nie
+        obejmują planowanej sceny około 6 milionów;
+  \item \texttt{glFinish()}, ukryte okno i atomowy licznik fragmentów zmieniają
+        zachowanie względem nieinstrumentowanego trybu interaktywnego;
+  \item nie wykonano ablacji poszczególnych optymalizacji ani pomiaru
+        konkurencyjnych aplikacji w identycznych warunkach;
+  \item brak obrazów i kamer referencyjnych uniemożliwił pomiar bezwzględnej
+        zgodności z rendererem użytym podczas treningu;
+  \item test drugiego producenta objął tylko małą scenę, a kompilacja w
+        systemie Linux nie została potwierdzona;
+  \item zastosowany SSIM jest uproszczoną miarą blokową $8\times8$.
+\end{itemize}
+
+Pomimo tych ograniczeń wyniki odpowiadają na główne pytania projektowe. Renderowanie scen rzędu miliona splatów jest możliwe z użyciem samego OpenGL 4.3, sortowanie GPU nie dominuje czasu klatki, zajętość VRAM ma liniowy model, a warstwa analityczna pozwala wskazać przyczynę wolniejszego działania sceny. Niepotwierdzone pozostają pełna przenośność na Linux, zachowanie dla scen około 6 milionów splatów oraz bezwzględna zgodność z zewnętrznym renderem referencyjnym. Są to konkretne kierunki dalszej walidacji systemu.

@@ -191,6 +191,16 @@ Ten sam shader fragmentów realizuje sześć trybów widoku: właściwy kolor, g
 
 Tryb podzielonego ekranu wykonuje dwa wywołania rysowania z różnymi obszarami \texttt{glViewport} i różnymi trybami diagnostycznymi. Parametry \texttt{uViewportOffsetX} oraz \texttt{uViewportScale} przeliczają \texttt{gl\_FragCoord} z lokalnego obszaru widoku do współrzędnych pełnej klatki. Oba obrazy korzystają z identycznej kamery, preprocessingu i uporządkowania, dlatego różnią się jedynie sposobem prezentacji danych.
 
+Przykładowy wynik działania zaimplementowanego potoku renderowania przedstawiono na rysunku~\ref{rys:przykladowy_render}.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\textwidth]{bicycle}
+  \caption{Przykładowy obraz sceny 3DGS wygenerowany przez
+  zaimplementowany renderer.}
+  \label{rys:przykladowy_render}
+\end{figure}
+
 \section{Interfejs i funkcje analityczne}
 \label{sec:impl_interfejs}
 Interfejs jest budowany w każdej klatce zgodnie z modelem immediate mode. Panel \texttt{Status} podzielono na pięć rozwijanych sekcji:
@@ -206,6 +216,17 @@ Interfejs jest budowany w każdej klatce zgodnie z modelem immediate mode. Panel
   \item \texttt{Stats} przedstawia pomiary, metodę sortowania, procedury
     walidacyjne oraz histogramy.
 \end{enumerate}
+
+Pełny widok interfejsu aplikacji przedstawiono na
+rysunku~\ref{rys:interfejs_aplikacji}.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{Ui}
+  \caption{Interfejs aplikacji z panelami sterowania renderowaniem,
+  statystykami wydajności i narzędziami diagnostycznymi.}
+  \label{rys:interfejs_aplikacji}
+\end{figure}
 
 Liczba klatek na sekundę jest wygładzana przez interpolację z wagą $0,1$, a 120 ostatnich wartości trafia do wykresu historii. Panel pokazuje również czas klatki, czas sortowania mierzony zegarem procesora, czas GPU, liczbę elementów przed i po odrzuceniu oraz szacowany rozmiar buforów sceny.
 Przełącznik sortowania pozwala zmienić implementację w trakcie działania, bez ponownego wczytywania danych czy aplikacji.
